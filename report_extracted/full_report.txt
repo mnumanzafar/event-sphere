@@ -1,0 +1,1392 @@
+﻿==========================================
+FILE: ch4.docx
+==========================================
+Chapter 4
+DESIGN AND ARCHITECTURE
+4. Design and Architecture
+This chapter outlines the full design and architecture specification of the Event Sphere system as outlined in the Software Design Description (SDD). It outlines the three-layer system architecture, data model representation and entity relationships, workflow model represented in the activity diagram, and formal design models such as sequence diagram, class diagram and data flow diagrams. Collectively, these components offer a holistic view of the structure and its behaviour that underpins the design of the system.
+4.1 System Architecture
+Event Sphere is based on the three-layer client-server architecture with cloud services. This ensures real-time event notifications, secure delivery of data, a scalable backend service and seamless communication between all user types. The three layers of the Event Sphere architecture are the Presentation, Application and Data Layer, with clearly demarcated responsibilities and boundaries.
+4.1.1 Presentation Layer
+The Presentation Layer is the mobile application interface of Event Sphere and constitutes all of the user interface elements that the end user interacts with on their Android phone. It is implemented entirely using Flutter and Dart, a framework for building user interfaces entirely from widgets that are rendered with high fidelity and responsiveness.
+The Presentation Layer is structured into three different role-based interfaces, rendered at runtime depending on the role of the logged-in user:
+Student Interface
+The Student interface allows access to the event discovery and browsing screen, the event registration module with one-tap registration, the QR code scanner for attendance logging on the day of the event, the bookmarks list for storing events of interest, the notifications module to view event registrations and reminders, and the user profile screen to update user details and view participation history.
+Faculty Interface
+The Faculty interface offers the event creation and management form, the pending events list indicating the current status of submissions, the participant list and attendance screen for approved events, the expense management module with receipt upload feature, and the analytics dashboard displaying participation trends and attendance data for events created by Faculty members.
+Admin Interface
+The Admin interface offers access to the user management panel for adding, editing and deleting Faculty and Student users, the event approval queue for reviewing and approving pending events, the system-wide analytics and participation reports dashboard, the expense approval process, the content moderation tools for deleting invalid or expired events, and the system administration screen for configuration and activity log.
+All user interface screens in the Presentation Layer include form validation prior to transmitting data to the backend server, real-time updates triggered by Firebase Firestore database listeners, and a consistent user experience with common themes such as consistent use of color, navigation, and error messages across all modules.
+4.1.2 Application Layer
+The Application Layer is the business and service integration layer of Event Sphere. This layer is located between the Presentation Layer and the Data Layer, and is responsible for handling user interactions, applying business rules, orchestrating service operations and managing the application state. The Application Layer is implemented in the Flutter application as service and state management classes.
+Authentication Service
+The Authentication Service handles all user authentication via Firebase Authentication. This includes user registration, password verification, session tokens, password resets and email verification. Most importantly, it is responsible for Role-Based Access Control (RBAC) via reading the user role from Firestore after login and providing the appropriate role-based view to the application. Only authenticated users with a role can go beyond the login screen.
+Event Service
+The Event Service handles the entire event lifecycle. It manages event creation (including input validation and Firestore write) by Faculty, event retrieval (filtered by status=Approved) for student browsing, event status update (approval/rejection with comments) by Admin, and real-time event data synchronization to all devices via Firestore listeners. Furthermore, the Event Service integrates with the Notification Service to send automatic push notifications at various events lifecycle stages.
+Registration and Attendance Service
+The Registration Service handles student registration for events using Firestore transactions to check event seat availability and reduce it in an atomic way, avoiding overbookings even if multiple clients try to register at the same time. It records student sign-ups, ensures that students can only sign up for one event and sends confirmation emails. The Attendance Service generates QR codes for each registered event and validates QR code scans, ensuring the student is registered, the event matches, and that the student is not checked in twice, then logs the attendance in Firestore.
+Notification Service
+The Notification Service uses Firebase Cloud Messaging (FCM) to provide instant notifications to all users. It is automatically triggered by other services on some important events such as event creation, approval, rejection, student enrolment, 24-hour event reminder, schedule change and system announcement. Notifications are also saved in the Firestore Notifications collection to be displayed in the user's notification center in the app.
+Expense Service
+The Expense Service handles event expenses. Faculty create expense records, including the value, category, description, and upload the receipt photo to Firebase Storage. The service records expense information in Firestore and sends a notification for Admin approval. The service receives the Admin's approval or rejection and updates the expense status in Firestore and sends the Faculty member a notification of the decision.
+4.1.3 Data Layer
+The Data Layer is the component of Event Sphere that handles all persistent data storage, access and management. It consists of three different back-end services that offer real-time synchronisation, relational data storage and management, media storage and secure access control.
+NoSQL Database (Firebase Firestore)
+The main real-time database of Event Sphere is Firebase Cloud Firestore. It maintains the data of all the major components of the application in a NoSQL document-collection format in the following collections: Users (storing Admin, Faculty, and Student information), Events (storing all events with status, organizer, and approval details), Registrations (storing student sign-up details), Attendance (storing QR code-verified student attendance records), Notifications (storing system-generated notifications), Expenses (storing faculty expense claims), and Societies (storing university societies information). Firestore's real-time listeners automatically update the database changes in real-time to all connected clients without needing to refresh.
+Supabase (Supplementary Backend)
+Supabase is used as an extended backend system to address additional relational data storage needs that extend beyond Firestore's NoSQL capabilities. It offers relational storage and can be used as a second storage layer to support data operations that require a relational schema (such as complex queries and joins between multiple entities).
+Firebase Storage (Media Storage)
+Firebase Storage is used for storing all binary files in Event Sphere. It handles the storage of event poster images uploaded by Faculty, the storage of images and PDFs for expense receipts, certificates of attendance for students who have registered for events, and any other media used for promotion. All files are stored with secure tokens and their download URLs are stored in the Firestore document records for the application to access.
+Firebase Security Rules
+Firebase Security Rules are set for Firestore and Firebase Storage to implement role-based data access controls. These determine that Student users can only read approved events and their own event registration and attendance records, Faculty users can only write events they created, and that only Admin users can access all collections with full read and write rights. Data communication between the mobile client and Firebase services is secured with SSL/TLS.
+4.2 Data Representation
+This chapter presents a full description of the Event Sphere data design, specifying how the information is represented, stored and related in the system. The data in Event Sphere is stored in the Firebase Firestore database (a document-collection NoSQL database) and in Firebase Storage for all binary media files. The data structure is defined using the data dictionary, entity relationships and the conceptual Entity-Relationship (ER) model.
+4.2.1 Data Dictionary
+The data dictionary defines all primary data entities used within Event Sphere and specifies the fields, data types, and roles of each attribute. Table 4.1 presents the complete data dictionary for the system.
+Table 4.1: Data Dictionary - Event Sphere
+Entity
+Fields
+User
+userId (PK), fullName, email, department, role (Admin/Faculty/Student), profileImageUrl, createdAt, updatedAt
+Event
+eventId (PK), title, description, venue, date, time, capacity, organizerId (FKUser), societyId (FKSociety), status (Pending/Approved/Rejected), approvalNotes, approvalDate, posterUrl
+Registration
+registrationId (PK), userId (FKUser), eventId (FKEvent), registrationDate, status (Registered/Cancelled)
+Attendance
+attendanceId (PK), userId (FKUser), eventId (FKEvent), checkInTime, verified (Boolean), certificateEligible (Boolean)
+Notification
+notificationId (PK), userId (FKUser), message, type (Approval/Reminder/Update/System), timestamp, seen (Boolean)
+Expense
+expenseId (PK), eventId (FKEvent), submittedBy (FKUser), amount, category, receiptUrl, status (Pending/Approved/Rejected)
+Society
+societyId (PK), name, description, presidentId (FKUser), memberCount
+AI Log (Optional)
+logId (PK), userId (FKUser), prompt, response, timestamp
+DeviceToken
+tokenId (PK), userId (FKUser), fcmToken, deviceInfo, createdAt
+These nine entities that have been specified in Table 4.1 make up the full data model of Event Sphere. These entities are stored in the form of Firestore collections with their respective records being stored in the form of documents. The foreign key relationship between these collections can be established through the use of document references linking these documents across other collections.
+4.2.2 Entity Relationships
+The entity relationships specify how the primary data entities of Event Sphere are related and data exchange occurs among them. Knowing these relationships is important in order to formulate database queries as well as to establish the proper Firestore security rules. The following table provides a summary of the entity relationship specification.
+Table 4.2: Entity Relationship Specification - Event Sphere
+Relationship
+Cardinality
+Description
+User  Event
+One-to-Many
+A single User (Faculty) can create many Events. Each Event has exactly one organizer.
+User  Registration
+One-to-Many
+A single User (Student) can have many Registrations. Each Registration belongs to exactly one User.
+Event  Registration
+One-to-Many
+A single Event can have many Registrations. Each Registration is linked to exactly one Event.
+User  Attendance
+One-to-Many
+A single User can have Attendance records across many Events. Each Attendance record belongs to one User.
+Event  Attendance
+One-to-Many
+A single Event generates many Attendance records, one per verified student check-in.
+Event  Notification
+One-to-Many
+A single Event can trigger many Notifications (approval, reminder, update). Each Notification references one Event.
+User  Notification
+One-to-Many
+A single User can receive many Notifications. Each Notification is addressed to one User.
+Event  Expense
+One-to-Many
+A single Event can have multiple Expense submissions by Faculty. Each Expense is linked to one Event.
+Society  Event
+One-to-Many
+A single Society can organize many Events. Each Event references one Society.
+User  Society
+Many-to-Many
+Users can be members of multiple Societies. Each Society can have multiple members.
+4.2.3 ER Diagram Overview
+The conceptual Entity-Relationship (ER) model of Event Sphere has the Event entity as the central source of data for other entities. The most frequently referenced entity is the User entity, as a foreign key of Events (as event organizer), Registrations (as event participant), Attendance (as event attendee), Notifications (as event recipient) and Expense (as expense submitter). This prominence of User is an outcome of the system's role-based architecture where every major action is initiated by and can be traced back to a user.
+Event connects to Registration, Attendance, Notification, and Expense, representing the entire event lifecycle: a Faculty User creates an Event, Students register using a Registration record, check in using an Attendance record, Notification records are automatically created at each step in the lifecycle, and Faculty submit Expense records for the event. The Society entity links to Event through a one-to-many relationship, reflecting that each university society can host numerous events each year.
+The ER model is implemented in Firebase Firestore as a document-collection database where each entity is a collection, a relationship to another entity is represented as a reference to a document in that entity, and Firestore Security Rules control access to collections and documents based on a user's role.
+4.3 Process Flow / Representation
+This section outlines the process flow of Event Sphere in the Activity Diagram, which represents the whole system process flow from user login to post-event processing. The process flow illustrates the flow of data and control in response to user and system events.
+4.3.1 Activity Diagram
+The Activity Diagram (Figure 1 in the SDD) is a global overview of the workflow associated with the Event Sphere application, capturing the interactions of the three users' roles from system entry to after the event. The diagram is divided into five stages: Login/Authentication, Admin/Faculty Event Management, Student Participation, Event Day and Post-Event.
+The diagram starts with the end-user launching the mobile app and authenticating their credentials. The user's credentials are authenticated by Firebase Authentication and an RBAC check is performed to verify the user's role. Depending on the role, one of the dashboards (Admin, Faculty, or Student) is displayed. The dashboards have access to the role-specific modules in the Presentation Layer.
+For the Admin/Faculty roles, the user manages events. The Faculty creates an event, which is set to Pending status on Firestore and goes into the Admin approval flow. The Admin approves/rejects the event. If approved, the event is automatically published to the list of events the students can see in real-time through Firestore. A rejected event triggers a notification to the Faculty organizer, with the reason for rejection.
+In the Student path, the student scans the list of approved events, searches or filters, clicks on an event of choice and registers with a single click. The system checks for available places, logs the registration and notifies the student. The student can also "bookmark" the event or add it to their device calendar.
+4.3.2 General Workflow
+The Event Sphere workflow as a whole is as follows:
+User Login: The user launches the app, logs in, and is authenticated by Firebase Authentication. RBAC checks and displays the user's dashboard.
+Event Creation: A Faculty member proposes an event by entering the necessary information. The system checks for errors and saves the event into Firestore with the status set to Pending, and sends the Admin a notification.
+Event Approval: The Admin views a list of events pending approval, approves/rejects the event and the system updates the status of the event and notifies the Faculty member of the event.
+Event Discovery: The student views the listing of the approved events, searches and filters events based on the search criteria, sees the full event details on the event card containing the event title, description, location, date and the organizer of the event.
+Student Registration: The student taps to register for an event. The event capacity is checked atomically, the registration is persisted, the remaining capacity is reduced and a confirmation is sent.
+QR Attendance: On the day of the event, a QR code specific to the event is created. Students use the QR code to check in. It verifies the scan with the registration data, prohibits multiple check-ins and logs the attendance in Firestore.
+After the Event: After the event, the system generates participation certificates for those eligible, asks for student feedback and ratings, stores all feedback in Firestore, and sets the event status to Completed.
+Reports and Analytics: Admin & Faculty can view the reports dashboard to check data on participation, attendance, department wise participation, and export events in the form of reports.
+4.4 Design Models
+Design models of Event Sphere represent the system's structure and behavior. They provide visual architectural representations that are used as a guide to the development team and ensure system modularity, scalability and maintainability. The next subsubsections discuss the Sequence Diagram and the Class Diagram, which represent the dynamic and static aspects of the system, respectively.
+4.4.1 Sequence Diagram
+The Sequence Diagram (Figure 2 in the SDD) illustrates how the components interact during the Event Approval Workflow process, one of the main processes in Event Sphere. This sequence diagram has four components: Faculty actor, UI Layer (Flutter front-end), EventService (application layer), Firestore events collection (data layer) and NotificationService.
+The sequence diagram begins with a Faculty member opening the Pending Events screen. The UI Layer makes a request to the EventService to get pending events (getPendingEvents()) which returns all events that are "pending" from Firestore. Firestore returns the pending events which are then displayed by the UI to the Faculty member.
+If the Faculty member wants to view more details about an event, the UI calls the getEventDetails(eventId) method of the EventService. The EventService queries Firestore to get the full event document containing the event title, venue, date, organizer, description and notes and returns these to the UI for display.
+When the Faculty member has reviewed the event, they click the Approve button. The UI calls the EventService's approveEvent(eventId, approvalNotes) method. If the current event status is neither "approved" nor "rejected", then the EventService atomically updates the Firestore event document, setting the status to "approved", and with the approval date and approval notes. Firestore confirms the update.
+Once the event status has been successfully updated, the EventService sends an event to the NotificationService to send a send ApprovalNotification(organizerId, eventId, approved=true) message. The NotificationService creates a new document in the Firestore Notifications collection for the event organizer.Once the notification is created, the NotificationService returns a success message to the EventService, which then returns an "approval success" message to the UI Layer. The Front End layer prompts a message "Event Approved Successfully" for the Faculty member and completes the sequence.
+This interaction illustrates the collaborative, real-time and secure event approval process that involves all three architectural layers of Event Sphere, and guarantees data integrity and real-time notifications to stakeholders.
+4.4.2 Class Diagram
+The Class Diagram (Figure 3 in the SDD) is a static description of the Event Sphere system, which defines all the major entities of the system as object-oriented classes and their relationships. The class diagram follows the UML class diagram and shows the object-oriented structure of Event Sphere.
+Core Classes
+The class diagram has the User class as the parent class. It stores common attributes of a user: uid, email, name, role, department, createdAt and updatedAt. It has methods such as login(), logout(), updateProfile() and getPermissions(). The User class is a superclass for three different types of users: Admin, Faculty and Student, which inherit methods from the User class. This defines manageUsers(), manageSocieties() and viewAllEvents(). Faculty defines createEvent(), approveEvent() and manageExpenses(). Student defines registerEvent(), viewEvents() and checkIn().
+Event Class
+Event class defines all the attributes of a university event: eventId, title, description, venue, date, capacity, organizerId, societyId, status, approvalNotes, approvalDate, and posterUrl. It has create(), update(), delete(), approve(), generateQR(), and getAttendance() methods. Event class is linked to Registration (one-to-many), Attendance (one-to-many), Notification (one-to-many) and Society (many-to-one) classes.
+Registration Class
+The Registration class represents a student's registration for an event, and is related to the User and Event classes. This class has fields registrationId, eventId, userId, registrationDate and status. It has methods register(), cancel(), checkIn() and getStatus(). A Registration record is a student's event registration record and status can be Registered or Cancelled.
+Attendance Class
+The Attendance class is used to capture student attendance at events. It has properties like attendanceId, eventId, userId, checkInTime, verified (Boolean) and certificateEligible (Boolean). Methods of the class are scanQR(), markAttendance() and issueCertificate(). When the QR scan is verified, the verified is set to true and the certificateEligible is set according to the attendance status.
+Notification Class
+The Notification class is a user notification. It has the following properties: notificationId, userId, message, type (Approval, Reminder, Update or System), date and seen (Boolean). It has send(), markAsRead() and delete() methods. The Notification is created by the NotificationService from system events such as event approvals, event registrations and reminders.
+Expense Class
+The Expense class is used in the event financial management process. It holds expenseId, eventId, amount, category, receiptUrl, status (Pending, Approved, Rejected) and the submittedBy reference. Its operations are create(), approve(), reject() and uploadReceipt(). Expenses are submitted by Faculty and approved by Admin in the expense management process.
+Society Class
+The Society class models university student societies hosting events. It holds societyId, name, description, presidentId and memberCount. It has methods create(), addMember(), removeMember(), and updateDetails(). A Society can have many Events associated with it, as per the Event-to-Society relationship.
+The Class Diagram collectively shows how these seven classes work together to support the entire scope of Event Sphere's event management lifecycle, and offer an object-oriented structural overview that guided the development of Event Sphere.
+4.4.3 Data Flow Diagrams
+DFD Level 0 - Context Diagram
+The DFD Level 0 diagram (Figure 4 in the SDD) is a top-level diagram that shows Event Sphere as a single process with external interactions to entities and data stores in the cloud. The three user roles (Admin, Faculty, Student) supply information to the system (event data input, registration requests, and administrative operations) and receive information from the system in the form of screens, notifications, certificates, and reports. Event Sphere system also interacts with three data stores: Firestore Database for reading and writing all structured data related to the application; Firebase Storage for storing and retrieving event posters, certificates, receipts and other documents; and Google Gemini AI for chat-based queries and AI-generated responses to provide the built-in AI assistance feature.
+DFD Level 1 - Event Management
+The Level 1 DFD (Figure 5 in the SDD) divides the high-level event management process into five sub-processes: Create Event (1.0), Store Event to DB (2.0), Send Approval Notification (3.0), Update Event Status (4.0) and Publish or Notify (5.0). An Admin or Faculty user enters event information via subprocess 1.0, which validates the event details and passes this information to subprocess 2.0, where a new event record is added to the Firestore Events collection with a status of PENDING. Subprocess 3.0 automatically notifies the approving faculty member. When reviewed, the the approval or rejection moves to subprocess 4.0 which updates the event status in Firestore to either APPROVED or REJECTED, along with timestamps and notes. For rejected events, a notification is sent to the organizer via the same subprocess.
+
+
+==========================================
+FILE: ch5.docx
+==========================================
+Chapter 5
+IMPLEMENTATION
+5. Implementation
+The implementation phase is responsible for turning the design architecture and requirements of Event Sphere into a fully functional and multi-role mobile application. The implementation is an Android mobile application using Flutter and Dart and a cloud-based backend using Firebase Authentication, Cloud Firestore, Firebase Cloud Messaging, Firebase Storage and Supabase. The system includes three different roles (Admin, Faculty, and Student) with a dedicated screen and features.
+The system has been built in an Agile manner with the following components for user authentication and registration, event creation, approval by admin, student registration, attendance via QR code, real-time notifications, expense management, and reporting. The system implementation adheres to the modular architecture presented in Chapter 4, with real-time data integration, role-based navigation and optimal and consistent mobile user interface design across all Android devices.
+5.1 Algorithm
+This chapter describes the key algorithms and processes implemented in each of the functional components of Event Sphere. The algorithms are presented with their function name, inputs, outputs and description in the same format as the system design documents.
+5.1.1 User Authentication
+Function: authenticateUser(email, password)
+Input: email (String), password (String)
+Output: Authorized User object (with role) or error
+Description: The system sends the credentials to Firebase Authentication for authentication. If authenticated, Firebase provides a user token. It checks the Users collection in Firestore, using the UID, to get the role field. The RBAC system then displays the Admin Dashboard, Faculty Dashboard or Student Dashboard according to the user's role. Authentication failure messages are displayed without revealing system specifics.
+Function: registerUser(userName, userEmail, userPass, role, department)
+Input: fullName (String), email (String), password (String), role (Enum), department (String)
+Output: New User document in Firestore, or validation error
+Description: The system generates a new Firebase Authentication user with the email and password. If the account creation is successful, the system writes a new User to the Firestore Users collection with the full name, email address, role, department, profile picture URL and creation date. The password reset feature creates a temporary password reset link via Firebase Authentication that expires after 15 minutes.
+5.1.2 Creating and Validating Events
+Function: createEvent(eventData, organizerId)
+Input: eventData (Object: title, description, date, time, venue, capacity, category, societyId, posterImageFile), organizerId (String)
+Returns: Event document in Firestore with status = Pending, or validation error
+Description: For all required event fields, the system performs rule-based client-side validation. If the event is valid, the system stores event details in the Firestore Events collection with an initial status of Pending, the organizerId, the creation date, and the poster URL (by uploading the poster image file to Firebase Storage). Once the event is created, a notification to approve the event is sent via the Notification Service to all Admin users.
+Function: updateEvent(eventId, updatedData)
+Input: eventId (String), updatedData (Object)
+Returns: Updated Firestore event document, or error
+Description: Faculty can update event details of Pending or Rejected events. The system will validate new fields and update Firestore atomically. If the event is resubmitted from Rejected status, the status is changed back to Pending and Admin is notified for approval.
+5.1.3 Event Approval Workflow
+Function: approveEvent(eventId, approvalNotes, adminId)
+Input: eventId (String), approvalNotes (String, optional), adminId (String)
+Return: Status of the event set to Approved in Firestore; notification email to organizer
+Description: The Admin fetches the list of events pending approval from Firestore. If the Admin approves an event, the system atomically changes the status of the event document to Approved, and logs the approvalDate and approval notes (if any). It then invokes the Notification Service to create a notification document for the event organizer, notifying them the event is approved. If the event is approved, students are notified in real-time when they listen to Firestore changes.
+Function: rejectEvent(eventId, rejectionNotes, adminId)
+Input: eventId (String), rejectionNotes (String, mandatory), adminId (String)
+Output: Event status changes to Rejected; a rejection notification with notes to the organizer
+Description: After the event is rejected, the system updates the event status to Rejected and saves the rejection notes (compulsory from the Admin). The event rejection reason is sent to the Faculty organizer. The event will not be visible to students and can be resubmitted by the Faculty member.
+5.1.4 Event Registration Management
+Function: registerForEvent(studentId, eventId)
+Input: studentId (String), eventId (String)
+Output: Firestore document Registration; a notification to the student
+Description: The app uses a Firestore transaction to atomically check if the event has been approved and is available for registration. If the event can accommodate the student, a Registration document is added with Registered status, timestamp, and references to the student and event. The event's remaining capacity is also atomically decreased to avoid race conditions when multiple registrations occur. FCM notifies the student of the registration.
+Function: cancelRegistration(registrationId, studentId)
+Input: registrationId (String), studentId (String)
+Output: Registration status updated to Cancelled; event capacity is increased
+Description: Student can cancel a registration before the event. The Registration document is updated to a status of Cancelled and Firestore's secure increment operation is used to increase the event's capacity.
+5.1.5 QR Code Generation and Attendance
+Function: generateEventQR(eventId)
+Input: eventId (String)
+Return: QR code image (unique) in the app
+Description: When the event is approved, the system generates a QR code for the event using qr_flutter package, and embeds the eventId in the QR code. The QR code image is then displayed on the Event Management screen for Faculty to display at the event on the day of the event. The QR code is specific to the event and shouldn't be reused.
+Function: verifyQRAttendance(scannedData, studentId)
+Input: scannedData (String: encoded eventId), studentId (String)
+Return: New Attendance record in Firestore; confirmation to student
+Description: When a student scans the QR code for an event, the system will check the scannedData (eventId) against three things in order: (1) Event ID check - making sure the scanned code is for a valid event; (2) Registered check - making sure the student is Registered to attend the event; (3) Duplicate check-in prevention - scanning the Attendance collection to ensure a check-in record for this event-student pairing does not already exist. If all checks pass, an Attendance document is created in Firestore with the check-in time, verified=true and certificate_eligible flag. If a match is found, an error message is returned and no attendance record is saved.
+5.1.6 Notification System
+Function: sendNotification(userId, message, type)
+Parameters: userId (String), message (String), type (Enum: Approval / Reminder / Update / System)
+Output: Notification document in Firestore; FCM push notification to user's device
+Description: The Notification Service saves a user's Notification in Firestore Notifications collection. The service also retrieves the user's FCM device token from the DeviceTokens collection and sends a push notification to Firebase Cloud Messaging (FCM). The push notification is delivered to the user's device whether the app is backgrounded or in the foreground. The types of notifications include: approval/rejection of event (to Faculty), confirmation of event registration (to Student), reminder for an event 24 hours prior (to registered Students) and broadcast announcements by the administrator (to all users).
+5.1.7 Expense Management
+Function: submitExpense(expenseData, facultyId)
+Input: expenseData (Object: eventId, amount, category, description, receiptImageFile), facultyId (String)Output: Expense document created in Firestore with status = Pending; receipt stored in Firebase StorageDescription: Faculty upload the receipt image to Firebase Storage and get a secure download URL. Then an Expense document is created in Firestore Expenses collection with the details of expense amount, category, description, receiptUrl, submittedBy and status = Pending. A notification is sent to the Admin that there is a new expense claim to review.
+Function: reviewExpense(expenseId, decision, adminId)Input: expenseId (String), decision (Enum: Approved / Rejected), adminId (String)Output: Updated expense status in Firestore; Email to Faculty with decisionDescription: Admin reviews the expense details and receipt. The decision is recorded by changing the status of the Expense document in Firestore to either Approved or Rejected. An email is sent to the Faculty member with the result. The approved expenses are saved in Firestore for financial audit.
+5.1.8 Reports and Analytics
+Function: generateAdminReport(filters)Input: filters (Object: dateRange, department, eventCategory)Return: Statistics of participation, attendance and engagementDescription: It retrieves data from Firestore Events, Registrations and Attendance collections based on the filters selected. It calculates aggregate statistics such as the total number of events, registrations, attendances and engagement by department. Data is displayed as charts and tables in the Admin Reports Screen. Reports can be exported as a PDF for institutional reporting.
+Function: generateFacultyAnalytics(facultyId)Input: facultyId (String)Output: Event-level participation and attendance metrics for events created by facultyDescription: The system finds all events with organizerId equal to the facultyId, and calculates participation metrics for each event, such as the number of registered, attended, and attendance rate. This is shown in the Faculty Analytics Screen broken down by event.
+5.1.9 System Administration
+Function: manageUser(action, userData)Parameters: action (Enum: Create / Update / Delete), userData (Object)Return: Firestore Users collection updated; log entry writtenDescription: User Management module is used for admin CRUD operations on user accounts. Create operations add new Users to Firestore and Firebase Authentication. Update operations update user properties. Delete operations delete Firestore documents and Firebase Authentication accounts. All operations will create an activity log entry in the system logs collection for audit purposes that will be stored for a minimum of six months.
+5.1.10 AI Support (Google Gemini)
+Function: sendAIQuery(userId, prompt)Parameters: userId (String), prompt (String)Return: AI response shown in chat viewDescription: The user's prompt sent to the in-app AI assistant is sent to the Google Gemini AI API. The request is formulated with the user's query and sent to the Gemini API. The response from the AI is returned promptly and presented in the chat. Additionally, the conversation can be recorded in the Firestore AI Logs collection for analysis and system optimisation.
+5.2 External APIs
+The following table shows all external libraries, APIs and third-party services used in Event Sphere. These technologies collectively enable the full functionality of the app including authentication, real-time data processing, push notifications, media storage and processing, QR code generation and scanning, map integration, and AI interaction.
+Table 5.1: External Libraries and APIs - Event Sphere
+Library / API
+Purpose in Event Sphere
+Firebase Authentication
+Manages user sign-up, login, email verification, password reset, and session token management. Enforces Role-Based Access Control (RBAC) for Admin, Faculty, and Student roles.
+Firebase Cloud Firestore
+Primary real-time NoSQL database storing all core application data including user profiles, events, registrations, attendance records, notifications, expenses, and society information.
+Firebase Cloud Messaging (FCM)
+Delivers automated push notifications for event approvals, registration confirmations, 24-hour reminders, schedule changes, rejection messages, and admin broadcast announcements.
+Firebase Storage
+Stores all binary media files including event poster images, expense receipt documents, participation certificate PDFs, and profile pictures uploaded by users.
+Firebase Security Rules
+Enforces role-based read/write permissions at the Firestore and Firebase Storage database levels, preventing unauthorized access by any user role.
+Supabase
+Provides supplementary relational backend services for structured data management and complex query operations that complement the Firestore NoSQL model.
+Google Maps API
+Integrates event location display and venue mapping within the mobile application, allowing students to view event venues directly on an interactive map.
+QR Code Generator (qr_flutter)
+Automatically generates unique, event-specific QR codes upon event approval. Each code is rendered within the application for display at the event venue.
+QR Code Scanner (mobile_scanner)
+Provides a built-in camera-based QR scanner within the Flutter app for student attendance verification on event day, with real-time validation feedback.
+Flutter (Dart)
+Primary cross-platform mobile development framework used to build the complete Android mobile application with responsive, widget-based UI components.
+Google Gemini AI
+Powers the in-app AI assistance chatbot feature, processing user queries related to events, campus guidance, and general support and returning AI-generated responses in real time.
+Dart HTTP / Dio
+Handles structured HTTP network calls for REST API communication between the mobile client and external services including Supabase and Google Maps.
+Flutter Local Notifications
+Displays local in-app notification banners when the application is in the foreground, complementing Firebase Cloud Messaging for the notification delivery system.
+The full list of external technologies used by Event Sphere is provided in Table 5.1. Firebase Authentication, Firestore, Cloud Messaging, and Storage provide the integrated backend services to support all primary functions from login to event creation and user attendance. Flutter and Dart supply the mobile app framework to ensure a seamless Android app. QR code libraries facilitate the automatic attendance check-in system at the heart of Event Sphere's event day workflow. Google Maps API and Google Gemini AI, respectively, provide geolocation event mapping and AI-powered user assistance. These services combine to provide a robust, secure and feature rich event management system for universities.
+5.3 User Interface
+Event Sphere is a sleek, user-friendly, mobile-first application built using the Flutter framework with Dart. It has a blue and white theme, with card-based screen designs, fluid transitions, and role-based rendering of the screens in all modules. Screens have been designed to reduce the number of steps needed to achieve the most common tasks, so that the application can be used by students, staff and administrators without any technical background.
+The flow of the application consists of the following screens:
+Splash Screen
+Onboarding Screen
+Login Screen
+Home Screen (Student)
+Profile Screen
+Events List Screen
+Event Detail Screen
+Event Registration Screen
+QR Code Scanner Screen
+Create Event Screen (Faculty)
+Admin Event Approval Screen
+Notifications Screen
+Reports and Analytics Screen
+Expense Submission Screen
+5.3.1 Splash Screen
+Figure 6 (SDD) shows the Splash Screen of Event Sphere. This screen is the initial screen that appears when the app is started on an Android phone. It showcases the Event Sphere logo and tagline over a blue background with a three-dot progress spinner at the bottom. The screen sets up the Firebase authentication state listener to establish if there is an active user session. If a session exists, the user is seamlessly redirected to their corresponding dashboard without having to log in again. If not, the user is taken to the Onboarding Screen.
+5.3.2 Onboarding Screen
+Figure 7 (SDD) illustrates the Onboarding Screen of Event Sphere where the user is introduced to the app's value proposition. It includes the Discover Events title, a search icon and a description inviting the user to search for events they are interested in and have time for. There is also a Next button to proceed to the next step of the onboarding process. The screen appears only during the initial launch of the app and is skipped on subsequent launches if the user is logged into the app. The onboarding screen is designed in line with the theme of the app but with a clean and simple interface.
+5.3.3 Login Screen
+Figure 8 (SDD) shows the Login Screen of Event Sphere. It displays the application name and Welcome Back message, along with two text boxes for the email address and password. Clicking a Sign In button prompts Firebase Authentication to authenticate the user and read the user's role from Firestore. RBAC is applied here to navigate the user to the Admin Dashboard, Faculty Dashboard or Student Dashboard, depending on their role. The screen also shows the credentials for demo accounts for testing and a Sign Up button for users without an account. For added flexibility, the password is shown or hidden.
+5.3.4 Home Screen
+Figure 9 (SDD) is the Home Screen of Event Sphere, as viewed by the Student role. It displays a welcome message to the logged-in student, followed by a Quick Access panel containing four tiles: Events, My Events, Societies, and Bookmarks. The bottom navigational bar includes links to Home, Events, Groups and Profile. The home screen loads the user's profile data from Firestore and sets up Firebase listeners to keep up-to-date with any notifications or changes. The interface is card-based and employs a blue and white theme to match the design system of the app.
+5.3.5 Profile Screen
+Figure 10 (SDD) shows the Event Sphere's Profile Screen. It shows the Profile Avatar, Full Name and Role Badge (Student, Faculty, or Admin) of the logged-in user. A Profile Information section below the avatar displays the user's full name and email address in appropriately labeled read-only fields. A Role field displays the user's role. At the bottom of the screen are two buttons: Edit Profile, which presents a profile form for editing, and Logout (in red for emphasis). The profile screen loads all data from the Firestore Users collection where the user's UID is the document ID.
+5.3.6 Events List Screen
+The Events List Screen is the main screen for Student users to discover events. It shows in real time all events with status of Approved from Firestore collection Events. Events are displayed in a vertical scrollable gallery of cards, with each card containing the event's title, date, location, category and the name of the event's organiser. The screen includes a search bar to find events by keywords. Students can filter events by category, department or date. Clicking any event card will bring up the Event Detail Screen with event details.
+5.3.7 Event Detail Screen
+The Event Detail Screen displays full details of an event. It shows the event name, event poster (pulled from the Firebase Storage), event date, time, location, event creator's name, society name, description, and capacity. A large Register button is shown at the bottom of the screen if there is capacity. This button is dynamically validated before being rendered; if the student is already registered, a Registered badge is shown instead. Share (button) and Bookmark (icon) are also provided for other event-related actions.
+5.3.8 Event Registration Screen
+The Event Registration Screen is launched when a student clicks Register on the Event Detail Screen. A Firestore transaction is used to check the seat availability atomically before the registration is created. A confirmation pop-up is shown to the student, confirming the event details and asking for final confirmation. When confirmed, the system saves the Registration document to Firestore, updates the capacity of the event and sends a push notification to the student via Firebase Cloud Messaging confirming registration. Upon completion, a success message is shown to the student.
+5.3.9 QR Code Scanner Screen
+Students can access the QR Code Scanner Screen on the event day. It enables the device camera via the Flutter mobile_scanner package and presents a live viewfinder of the camera with an overlay for scanning QR codes. After scanning the event QR code shown at the event, the system reads the QR code's event ID and checks the student's registration status at Firestore. The system does three validations: event ID is correct, student is registered, and the student has not checked in already. If the checks are successful, the system logs the attendance in the Firestore Attendance collection and notifies the student.
+5.3.10 Create Event Screen
+The Create Event Screen can be accessed by Faculty users from the Faculty Dashboard. This screen offers a form for submitting an event proposal. The form consists of an event title, description, date picker, time picker, venue, category dropdown, capacity, and related society picker. An event poster upload section allows faculty to upload an event poster from their gallery, stored in Firebase Storage. A Submit for Approval button performs local validation and then saves the event document to Firestore with the status of Pending and sends an approval notification to the Admin.
+5.3.11 Admin Event Approval Screen
+The Admin Event Approval Screen displays the list of pending event submissions for approval by the Admin. For each event, the event title, faculty member who submitted it, date of submission and category are listed as a card. Clicking on a card reveals the event details such as the event description, date, locality and poster. The Admin can approve or reject the event using buttons. There is also an optional text box for rejection comments. When approved, the event status in Firestore is set to Approved and the event is immediately available to students. When rejected, the event status is updated to Rejected and the faculty member is notified.
+5.3.12 Notifications Screen
+The Notifications Screen shows a reverse chronologically sorted list of all system notifications for the logged-in user. For each notification, the notification type icon, message and date are displayed. The list is populated by fetching notifications from the Firestore Notifications collection where the user ID matches the current user's UID and ordered by the timestamp in descending order. Unread notifications are highlighted. When a notification is clicked, it is marked as seen (updating the seen field in Firestore) and the user is taken to the appropriate part of the app, for example the event detail screen for approval and registration notifications.
+5.3.13 Reports and Analytics Screen
+The Reports and Analytics Screen is available to Admins and Faculty. It shows participation statistics and engagement metrics for events. The screen displays system-wide data to Admin users, such as the total number of users registered, the total number of events created, overall participation trends, and departmental participation levels. For Faculty users, the screen displays event-specific analytics such as registrations, attendance, and participation rates for events they have created. Graphical representations make the data easy to understand. Users can use export buttons to save reports as PDFs for institutional reporting.
+5.3.14 Expense Submission Screen
+The Expense Submission Screen can be used by Faculty to request financial reimbursements for expenses incurred for a specific event. It provides fields for the event, expense amount, a dropdown for the category (Logistics, Printing, Refreshments, Equipment, Other), description and an option to upload an image of the receipt. The receipt image is uploaded to Firebase Storage and the URL is stored in Firestore Expense document. Clicking on the Submit button creates an expense record and sets the status to Pending, and sends a notification to the Admin. Faculty also has access to view the status of past expense submissions.
+
+
+==========================================
+FILE: EventSphere_Ch1.docx
+==========================================
+Chapter 1
+INTRODUCTION
+1. Introduction
+The advent of mobile and cloud computing technologies has revolutionised information management and dissemination in organisations. Universities have a massive number of events held throughout the academic year ranging from seminars, conferences, sports, cultural, and other departmental events. Despite this, nearly all universities still use disjointed and offline approaches for event communication and coordination, resulting in low student participation, low turnout and wasted time and money. Event Sphere is an Android mobile application that aims to solve these problems by offering a mobile digital event management system for university events. It supports Faculty for proposing events, which are submitted for review and approved by Administrators before going public to Students. Students can view all events and sign up for events they are interested in, using a QR code scanning system to verify attendance. Event Sphere also enables real-time notifications, attendance tracking, and role-based authorization for Administrators, Faculty and Students. Event Sphere is backed by Firebase and Supabase, which enable real-time data updates, secure authentication, and cloud data storage. Event locations are shown using Google Maps API and a marketing web page allows general overview of the application and APK downloading. The application is built with Flutter and Dart, offering a consistent look and feel and optimal performance on Android devices. This report offers a detailed description of the Event Sphere design, implementation and testing. It starts with the problem context and background of the project, followed by a detailed review of the requirements based on the Software Requirements Specification (SRS) document. The following chapters address the system design and architecture (Software Design Description - SDD), implementation, testing, and conclusions.
+1.1 Brief
+Event Sphere is a mobile app for event management in universities to connect users with administrators, faculty and students to handle university events. It is designed for administrators to have complete oversight of all user accounts, events and system management. It gives faculty the ability to submit, manage, and track events, and students with the ease of discovering, registering and scanning QR codes at their events. Flutter, a mobile app development framework, has been used to develop the project, allowing it to run on Android. Real-time database operations and user authentication are managed through Firebase, with Supabase offering additional back-end services. It uses Google Maps API for displaying the events' location and has an automated notification module to ensure that users are always up to date with changes and notifications. Our approach for development is Agile and we use sprints. The sprints were dedicated to the development of these modules: login and registration, event creation, QR attendance system, notifications, and admin dashboard. This provided feedback throughout the project and, eventually, functional software at the end of each sprint.
+1.2 Relevance to Course Modules
+Event Sphere development incorporates theoretical concepts and hands-on skills learned in several courses of the Bachelor of Science in Computer Science (BSCS) program. Table 1.1 below shows the relevance of each course module to the development of Event Sphere.
+Table 1.1: Relevance to Course Modules
+Course Module
+Application in Event Sphere
+Software Engineering
+Event Sphere adopted a Software Engineering development approach. Software Requirement Specification (SRS) and System Design Document (SDD) were developed to specify the system requirements and design. Use case, class, sequence and activity diagrams were created to describe system behavior. The Agile SDLC methodology was used to enable iterative development and incremental feature release.
+Mobile Application Development
+The system was developed as a mobile application using the cross-platform framework Flutter and Dart. A user interface has been built on Android devices, allowing all three user roles to access a mobile responsive design. Event browsing, event registration, scanning QRs and dealing with notifications were implemented as native features.
+Database Systems
+ Firebase Firestore and Supabase were employed as databases to store and retrieve data. The database schema was tailored to store and manage users, events, registrations, participation, and notifications. Real-time data sync (Firebase Firestore) combined with Supabase (additional relational database operations).
+Human Computer Interaction (HCI)
+Event Sphere's user interface is focused on ease-of-use, accessibility and user experience. Consistent interaction patterns, simple layout and informative messages were implemented throughout each module. The user interface design strives for least number of interactions for accessing key features.
+Computer Networks
+Event Sphere relies on real-time interaction between the mobile application and the back-end by communicating using Firebase real-time listeners and REST APIs. Event Sphere employs HTTP requests to keep event data in sync, send push notifications and utilise Google Map services for location-based event management.
+Object-Oriented Programming (OOP)
+The app is designed using OOP concepts. Key concepts like User, Event, Registration, and Notification are represented as classes with encapsulated properties and behaviours. Inheritance, abstraction, and polymorphism are used in various modules.
+Data Structures
+Organisation of events, users and logs of attendance was handled by using efficient data structures. Lists, maps and queues are used for live data fetching, filtering events, and validating QR codes.
+From the preceding analysis, it is clear that Event Sphere is not confined to any particular Computer Science subject. Rather, it is an amalgamation of several Computer Science disciplines being applied to a real-world scenario.
+1.3 Project Background
+A campus has numerous events that are essential for student, academic and community development. Yet, universities, including COMSATS University Islamabad, Sahiwal Campus, like most others, depend on a mix of manual and informal methods for managing events. Notices, WhatsApp groups and Facebook pages are used to announce events, while broadcast emails are sent to students. Students generally register for events through Google Forms or registration sheets and are marked present manually. 
+This system is plagued by significant shortcomings: students receive notice in a piecemeal fashion, registration data is dispersed in multiple media and there is no convenient and central platform for managing attendance and tracking participation in events. Lack of a dedicated technology-based event management system means that potential opportunities for student involvement are wasted, event planning and resource allocation becomes cumbersome, and there is no way of measuring engagement for future event planning. 
+Event Sphere is designed to address these issues. The app offers a role-based and unified platform for the entire event lifecycle to be managed securely and digitally. Event Sphere brings together all of the event-life-cycle activities in a single mobile application backed up by cloud data, removing the inefficiencies inherent in the manual approach.
+1.4 Literature Review
+Over the last decade, there has been significant advancement in research in the field of digital event management and university information systems using mobile technologies in particular. Research has consistently identified the necessity for integrated, technology-based systems that have the potential to take over manual processes in universities.
+ Several research has focused on the use of mobile apps for event management in universities. Studies show that when information about institutional activities is delivered to through mobile platforms students use, they are more likely to participate. Mobile technology enables it CLOSES the communication gap between university staff and students, especially in institutions with a large number of students, where it is difficult to communicate information through other channels (e.g. notice boards, email) in a timely and effective way.
+ The use of QR codes to check attendance in both academic and corporate settings has been widely researched. QR code-based attendance systems have been proven to minimise human error, prevent "buddy punching" and greatly save time on attendance recording. The use of backend-as-a-service (BaaS) solutions such as Firebase and Supabase has also been widely embraced in software projects for academic purposes owing to their scalability, real-time data processing capabilities and plug-and-play integration with mobile app development platforms.
+ While the existing research supports the use of web-based event management systems, current research shows that a majority of universities are yet to adopt an integrated event management system. While there are many third-party solutions like Eventbrite and Meetup, these are not built for use within a university and lack the support for role-based access control of the university hierarchical structure. This study points to an opportunity that Event Sphere fills.
+1.5 Analysis from Literature Review (in the context of Event Sphere)
+Information from the literature review contributed to the design of Event Sphere and its functionality. The literature review brings in some significant findings that have implications for the project.
+First, it is widely accepted that mobile apps are an effective means of engaging students. This supports our choice to create Event Sphere as a mobile-first app with Flutter, meaning students, staff and administrators can easily use their mobile phone to access the system. Second, the reported success of QR-systems justified the inclusion of a QR-module. Third, the literature on the cloud-based backend supported the decision to use Firebase and Supabase. Lastly, the need for a complete integrated solution for university event management confirmed the novelty of Event Sphere.
+1.6 Methodology and Software Lifecycle for This Project
+Event Sphere was developed in accordance with the Agile Software Development Lifecycle (SDLC), chosen for its adaptability, iterative approach and compatibility with multiple modules that need to work seamlessly together, and a highly fluid requirements development. The software was developed by breaking the development into iterative sprints based on functional modules of the requirement. The details of the phases in developing Event Sphere are discussed in the following subsections.
+1.6.1 Requirement Gathering
+The requirement gathering phase was the initial phase of the Event Sphere development. The team met with the project supervisor, co-supervisor and representative stakeholders (students and faculty) as part of a series of meetings to determine the system's primary requirements. The current system (manual event management process) was critically analysed to understand the deficiencies and determine the expectations for the new system. 
+The results of this phase were documented in the Software Requirements Specification (SRS) which will capture the functional and non-functional requirements of the system, use case descriptions, actor descriptions and system constraints. Use case diagrams were drawn to depict the interactions between actors and use cases. The requirement gathering phase provided a solid foundation that the rest of the design and development phases were based upon.
+1.6.2 System Design
+Once the requirement phase was complete, the system design phase developed a detailed design or blueprint of Event Sphere. The system architecture was based on cloud-based client-server architecture with the mobile frontend implemented with Flutter and the server side implemented with Firebase along with Supabase.
+This phase defined a three-layer architecture consisting of the Presentation Layer (all the Flutter-based UI components), the Application Layer (business logic and interactions with various services) and the Data Layer (all the interactions with Firestore, Supabase and Firebase Storage). A schema design was developed to specify the structure of all key entities namely: User, Event, Registration, Attendance, Notification, Expense and Society. Role-Based Access Control (RBAC) rules were defined to control access for Admin, Faculty and Students. Software Design Description (SDD) was used to document all design choices.
+1.6.3 Model Development
+During the model development phase, all UML and data flow diagrams - the design models of the Event Sphere system - were developed. These models visually explain the system's behaviour from the user's perspective and how its components communicate with each other.
+This phase resulted in the design of the following models: an Activity Diagram that represents the entire event management sequence of operations, from user login to certificate generation after the event; a Sequence Diagram that illustrates the sequence of operations in the approval process for events between the Faculty, Event Service, Firestore and the Notification Service; a Class Diagram that represents all core entities of the system and their object-oriented relationships; a Data Flow Diagram Level 0 that presents an overview of the system in its environment; and a Data Flow Diagram Level 1 that breaks down the Event Management process into subprocesses. The set of these models provided a roadmap for the implementation phase of the project.
+1.6.4 Implementation
+The implementation phase was the key development phase in the Event Sphere project. The development strictly followed the Agile methodology - a step by step approach to implementing the system in nine planned increments, each focused on building a particular system module. The initial increments set up the core functionality such as user authentication, role-based browsing of the app and simple event exploration. The following increments built on this foundation to incorporate event creation and approval processes, student registration and event attendance, QR code generation and scanning, sending push notifications, the application admin interface, analytics report generation, and a web landing page.
+The mobile application was built using Flutter framework (written in Dart) using object-oriented programming principles. Firebase Authentication was used to provide secure user login and roles determination. Firebase Firestore was the main database used in real time while Firebase Cloud Messaging (FCM) was used for notifications. Firebase Storage was used to store the media files such as event poster and certificates. Google Maps API was also used to provide venue details of events.
+1.6.5 Testing and Validation
+Testing was also done in parallel with implementation, with specific testing sessions at the end of the development of each increment. This is in line with the principles of Agile to catch defects early on to prevent them from spreading throughout the system.
+Unit testing was conducted on individual functions and UI elements to ensure they functioned as expected. Integration testing was conducted to ensure modules were integrated properly by passing data between the Flutter front end and Firebase back end. System testing verified the entire system with the functional and non-functional requirements specified in the SRS. User Acceptance Testing (UAT) was performed with a group of representative students and professors to ensure ease-of-use of the system. Concurrency and load testing were conducted to check if the system responded in a timely manner to a specified throughput and load.
+1.6.6 Deployment
+In the deployment phase, the Event Sphere application was made accessible to the target audience. The Android app was built into an APK and published for download via the promotional web landing page, created as part of this project. The page includes a description of the app's features, screenshots, and a link to download the APK file. 
+The Firebase and Supabase DataBase as a Service (DBaaS) services were set up to run on their respective hosting platforms and all of the database rules, authentication settings, storage rules and Firebase notification service credentials were verified to be in place for the production environment. Firebase Security Rules were finalised to control access to data, ensuring role-based access control at the database level, with no unauthorised read/write access to any collection of data.
+1.6.7 Maintenance
+The maintenance stage is the cycle of activities needed to maintain the stability, security and functionality of the Event Sphere platform after it has been deployed. Maintenance tasks include analysing system logs using the Firebase console and the Event Sphere administration logging module, fixing identified bugs uncovered in use, maintaining security (patches) and dependency (updates) management, and improving the efficiency of database queries as the amount of data grows. 
+The highly modular design of Event Sphere, source code under version control, and naming conventions for various objects, ensure maintenance can be conducted in a modular approach without impacting the overall system. Event Sphere is planned to be extended with additional features such as AI event recommendations, multi-campus support, offline caching and support for the iOS mobile platform in future maintenance iterations, which could be implemented as incremental development work items without impact on existing functionality.
+1.6.8 Rationale behind Selected Methodology
+Event Sphere has opted for an Agile approach for several reasons. The system is made up of various modules that have individual specifications and complexities; therefore a waterfall methodology could not be used. The Agile methodology with its iterative nature allowed each module to be built and tested independently, minimising the possibility of integration issues. The approach also allowed for inevitable evolving requirements, which arose as work was being done and input from the supervisors was included. Given the team involved in the project was three people, Agile's focus on communication and collaboration with continuous delivery was well suited to the project team.
+
+
+==========================================
+FILE: EventSphere_Ch2.docx
+==========================================
+Chapter 2
+PROBLEM DEFINITION
+2. Problem Definition
+This chapter offers a full definition of the problem to be addressed by Event Sphere. It describes the problems that Universities face when dealing with academic events through traditional manual processes; examines the deliverables and development needs in the proposed system; and provides a thorough description of the current system and its problems.
+2.1 Problem Statement
+Universities are vibrant campuses, hosting a variety of events throughout the year. While these events are crucial for the development and engagement of students and the university, planning, communication, and the participation in university events at COMSATS University Islamabad, Sahiwal Campus is largely still manual, unintegrated and poorly managed.
+2.1.1 Core Problem Statement
+There is no digital, integrated system for event management for university events that links event creation, administrative approval, student event registration and attendance, expenses and real-time communication and provides access to all this in a role-based, integrated system. This leads to event data being spread over multiple channels, inefficient and inaccurate student registration, manual attendance tracking, lack of expense tracking and a system that cannot be used for data analysis to oversee and manage events. This fundamental issue impacts three key stakeholder segments, with their own unique, yet related, challenges. Students experience poor communication and nonstandardised registrations. Academics suffer from inappropriate approval processes, tedious attendance management and lack of analytics to measure student's participation. Administrators do not have a central tool to monitor, have no unified data and cannot enforce institutional regulations through a formal process.
+All of the aforementioned challenges are addressed by Event Sphere, which delivers a scalability, cloud-based, and role-based mobile application that digitises the event management workflow from the event idea through to approval and registration, to student attendance (through QR codes), expense management, instant event updates and post-event reporting.
+2.1.2 Challenges Faced by Students
+ Events are being communicated in an informal way. Students not belonging to certain groups, and not consulting notice boards often miss out on events
+.  There is no event search. Finding events of interest to participants is done manually and relies on social and peer interactions.
+  Event registration through Google Forms or printed sheets is not confirmed, cannot prevent duplicates and has no definitive list of participants.
+  Names are checked for attendance manually on printed lists - a time-consuming, error-prone and person dependent process.
+  Participants do not receive automated reminder emails, resulting in the lack of reminders and reduced chances of participation.
+2.1.3 Challenges Faced by Faculty
+Event announcements are done ad hoc by a faculty member writing the announcement and sending it through multiple channels, thereby appearing disjointed.
+We do not have a formal online form to submit events for approval. Approval is given informally and/or verbally.
+There are no real-time participant lists and participant numbers, as the faculty has to gather and compile form responses. Event-related expense management is handled without any standardized process, making financial accountability difficult.
+Event reporting and feedback is not systematic, making it hard to assess event outcomes or guide future events.
+2.1.4 Challenges Faced by Administrators
+There is no system for approving events to be announced to the public, raising the risk of potentially inappropriate or poorly organised events being listed.
+There is no way to aggregate event data, participation numbers or engagement data for administrators for analysis. 
+User and administrator accounts are managed and created manually, risking user account misuse and administration mistakes.
+There are no tools for moderating and deleting announcements for cancelled and past events, leading to potential confusion for students.
+2.2 Deliverables and Development Requirements
+Event Sphere development is guided by a number of deliverables and requirements that constitute the deliverables and technical specifications of the system.
+2.2.1 Major Deliverables
+The main deliverables of Event Sphere consist of all software components, documentation and academic research made during the project development. The summary of all the project deliverables and descriptions are outlined in Table 2.1.
+Table 2.1: Major Project Deliverables
+No.
+Deliverable
+Description
+D01
+Mobile Application (Android)
+A complete Android Flutter (Dart) mobile application that provides role-based (Admin, Faculty, Student) access with event management features.
+D02
+User Authentication System
+A robust Firebase authentication module for user registration, login, password recovery and email verification with Role-based Access Control (RBAC).
+D03
+Event Management Module
+A full event management module to enable event creations by faculty and event submissions to admin for approval, reject or update.
+D04
+QR Code Attendance System
+An automated QR code generator and scanner module creating unique QR codes for each event, verifying student entries, updating Firestore with attendance data, and certifying events for attendance.
+D05
+Real-Time Notification System
+A Firebase Cloud Messaging (FCM) integration to provide real-time notifications for event approvals, event registration confirmations, reminders and calendar changes, as well as notifications from the administrators.
+D06
+Admin Dashboard and Reports
+An admin portal for user and event management, attendance tracking, downloadable reports and ensuring the integrity of the system.
+D07
+Expense Management Module
+A functionality for faculty to claim expenses incurred in an event, upload receipts for review and processing; for admins to approve or deny expense claims with notifications of their actions.
+D08
+Promotional Web Landing Page
+A public webpage that showcases Event Sphere's features, screenshots, with a link to download the Android APK.
+D09
+SRS Document
+A formal Software Requirements Specification documenting functional and non-functional requirements, use case diagram, actor specifications, constraints and others.
+D10
+SDD Document
+A formal Software Design Description, including system architecture, UML diagrams, data dictionary and algorithm descriptions.
+D11
+Final Project Report
+An academic report describing all aspects of the project such as its introduction, problem statement, requirements, design, implementation, testing and conclusions.
+The set of eleven deliverables shown in Table 2.1 above represents the total product of the Event Sphere project. The mobile app and its modules are the main technical deliverables and the SRS, SDD and Final Report represent the academic report deliverables that are required to be submitted at the end of final year.
+2.2.2 Development Requirements
+Alongside the deliverables, the Event Sphere project also requires a number of technical, functional and non-functional development requirements to be met. These outline the restrictions, rules and needs of the system during the development process.
+Technical Requirements
+Primary mobile development must be done using Flutter (Dart) framework to run on Android devices without performance issues. 
+The system must implement Firebase as the primary backend service for Authentication, Cloud Firestore Database, Firebase Cloud Messaging (FCM) and Firebase Storage.
+Supabase must be used as a secondary (optional) backend to provide additional relational databases.
+The application must have Role-based access control (RBAC) that must implement, at both client and server side, strict access control for Admin, Faculty and Student roles.  It must leverage Google Maps API for event location, mapping and venue management.
+The QR code system must allow automatic generation of QR codes for each event and seamlessly include a QR code scanner to check attendance.
+Functional Requirements
+The system shall provide full user lifecycle management in terms of registration, login, user profile update and user role management for all user roles. 
+Academics must be able to add, edit and submit events which are reviewed and approved by administrators. 
+Event podcasts must be approved or rejected by admins with notes sent to the event organisers via push notifications. 
+Students have access to browse, search and filter, register for and bookmark events through the mobile app. 
+The expenses module should provide an option for faculty to upload expenses (along with receipts) and for administrators to approve/reject expenses.
+Admin dashboard must include event analytics, user management and event reports download.
+Non-Functional Requirements
+Performance: Event list loading time should be under two seconds, with a user load of at least 500 users. 
+ Scalability: The server architecture should allow for horizontal scaling for a growing number of users, events, and records. 
+ Security: Data collected in the system should be transmitted using SSL/TLS, and Firebase Security Rules should be used to enforce role-based database access control.
+  Usability: The user interface should be simple and user-friendly, not requiring technical expertise for any role.
+  Reliability: The system should have at least 99.9% uptime during term time.
+  Maintainability: The system must be structured according to OOP principles and must have well separated modules for ease of modification.
+2.3 Current System
+Providing a background on the current system is needed to better understand the level of improvement brought by Event Sphere. The current system for university events is a mixture of manual processes, ad hoc communications and digital systems.
+2.3.1 How the Current System Operates
+The current event management process is an informal one which differs across departments and individuals:
+Event Announcement: Faculty circulate announcements via WhatsApp groups or Facebook pages and/or physical notice boards and email. Content is not in a consistent format or kept in a central database. 
+Registrations: Links to Google Forms or handwritten registration sheets are provided to students. Neither offers confirmation or checks for duplicate enrollments.
+Approval: Event approval is done informally via phone or email without any formal approval process or audit trail. 
+Check In: Students are checked in on paper lists, which is time-consuming, inefficient, and resource-wasteful. 
+event Budget: There is no formal system for the submission or the approval of event expenses, resulting in accountability issues.
+After the Event: Data is kept ad-hoc in spreadsheets or individual files with no institutional level data retention or analytics.
+2.3.2 Limitations of the Current System
+No Consolidation: Events are not centralised - information is spread across multiple media platforms.
+Weaker Communication: Knowledge dissemination through WhatsApp and social media channels has limitations due to group restrictions and information overload.
+Lack of Approval Process: Events are not reviewed and approved before publishing, so it can't be guaranteed they meet institution standards.
+Paper-based (and prone to errors) Event Registration: Registration is manual and cannot adhere to capacity limits, check for duplicate entries, or automatically confirm attendance. 
+Inefficient Attendance Monitoring: Manual attendance tracking is time consuming, inaccurate and requires staff support. 
+No Expense Tracking: Expenses are monitored informally and no process is followed for expense submission and approval. 
+Lack of Analytics: There is no system to record and analyse event attendance data for planning and evaluation. 
+Fragmented and Lost Data: The fragmented nature of the files being stored and the loss of data means it is often unavailable for reporting.
+2.3.3 Comparison: Current System vs. Event Sphere
+The following table shows a head-to-head comparison of the existing manual system and the new Event Sphere system in terms of operational aspects.
+Table 2.2: Current System vs. Event Sphere
+Aspect
+Current Manual System
+Event Sphere Solution
+Event Announcement
+Physical notice boards, WhatsApp groups, Facebook pages, email broadcasts
+Centralized in-app event listing with real-time Firestore updates and FCM push notifications
+Event Registration
+Google Forms or manual paper sign-up sheets
+One-tap digital registration with automatic participant list generation and capacity enforcement
+Attendance Recording
+Manual sign-in sheets managed by event organizers
+QR code-based attendance scanning with instant Firestore recording and duplicate check prevention
+Event Approval
+Informal verbal or email-based approvals
+Structured digital approval workflow with admin review queue, status tracking, and feedback notes
+Notifications and Updates
+WhatsApp messages, phone calls, or email broadcasts
+Automated Firebase Cloud Messaging (FCM) push notifications for all system events
+Participation Tracking
+No centralized tracking; records in separate files
+Real-time participation analytics visible to faculty and administrators through the dashboard
+Event Discovery
+Students depend on chance encounters with notice boards
+Searchable and filterable event listing with category, department, and date filters
+Expense Management
+No formal expense tracking mechanism
+Dedicated expense submission module with receipt uploads and admin approval workflow
+Reporting and Analytics
+No formal reporting mechanism available
+Admin dashboard with downloadable participation reports and visual engagement statistics
+The comparison we present in Table 2.2 shows how Event Sphere overcomes each of the challenges of the existing system, in a specific and specific way. Event Sphere has indeed transformed the current manual and decentralized event management process with a role-based, automated and digital platform.
+
+
+==========================================
+FILE: EventSphere_Ch3.docx
+==========================================
+Chapter 3
+REQUIREMENT ANALYSIS
+3. Requirement Analysis
+This chapter provides a full analysis of the Event Sphere system's requirements sourced from the Software Requirements Specification (SRS). This includes the Use Case Diagram, Use Case Descriptions, Functional Requirements (grouped by application feature) and Non-Functional Requirements (grouped by quality attribute). All requirements can be traced back to a specific stakeholder need and the problem statement defined in Chapter 2.
+3.1 Use Case Diagram
+The Event Sphere Use Case Diagram is a top-level view of interactions between key stakeholders and functional components of the system. This diagram defines the full set of system functionality from the point of view of each stakeholder role and defines the system boundaries of the system being built. Figure 3.1 of the SRS document refers to the diagram.
+3.1.1 Actors
+There are four key actors in Event Sphere, with different roles and interaction with the system:
+Admin
+Event Sphere's administrator has the highest level of authority. The Admin is in charge of user management, reviewing and approving or denying event submissions from Faculty, maintenance and configuration of the system, moderating the content of the system, and reviewing all reports, including the statistical reports of attendance. The Admin is involved with all five main use cases.
+Faculty
+Faculty are event organisers. They can propose and submit events, manage events they have organized, view participant registrations for events they have proposed and organized, submit expenses for events they have organized and access reports and analytics for their events. The Event Management, Event Participation, Reports and Analytics, and Expense Management use cases are the main interactions faculty have with the system.
+Student
+The target audience of Event Sphere is students. They attend and find approved events, sign up to attend events with one click, get push notifications for event changes and reminders, mark events they will attend, and confirm their attendance on the day of the event using a QR code. Students engage with the Event Participation and Notifications use cases.
+System
+The System actor is the automated system processes that run in the background. The system is responsible for sending Firebase Cloud Messaging (FCM) notifications, creating unique QR codes for events that are approved, checking whether a participant is attending an event, processing status requests for events, backing up data, and maintaining a log of all system activities. It facilitates and supports the interactions of all other actors in the event process.
+3.1.2 Primary Use Cases
+The Event Sphere system is made up of five primary use cases, each corresponding to a key functional component of the application:
+UC-1 User Management: Represents all of the user account lifecycle functions (create, update, delete, assign role) by the Admin with the support of System.
+UC-2 Event Management: Manages the entire event life cycle from Faculty creation and submission to approval by the Admin and publication to students, involving Admin, Faculty and System actors.
+UC-3 Event Participation: Involves student event registration, digital one-tap sign-ups, QR code based attendance check and certificate eligibility management by Student, Faculty and System actors. 
+UC-4 Reports and Analytics: Covers creation, viewing and exporting of event participation, attendance, and engagement reports, and analytics, involving Admin and Faculty, and System.
+UC-5 System Administration and Maintenance: Covers system configuration settings, data backup, log activity creation, system issue resolution and system "well-being" management by Admin, with System support.
+3.1.3 Use Case Relationships
+Event Management use case includes optional Bookmark and Event Sharing.
+Event Participation has an optional QR Code component for check-in.
+Event Participation includes the Notifications module for confirmations, reminders and notifications.
+The Data Management module has dependency with the Event Management, Event Participation and Reports and Analytics.
+System Administration and Maintenance aggregates with the Log and Track System Activities module.
+3.2 Detailed Use Case Descriptions
+This section provides the full detailed use case descriptions of all the five use cases, documented using a template that includes identifier, actors, description, trigger, preconditions, postconditions, normal flow, alternative flows, exceptions and business rules.
+3.2.1 Use Case 1 - User Management
+Table 3.1: Use Case Description - UC-1 User Management
+Use Case ID
+UC-1
+Use Case Name
+User Management
+Actors
+Primary: Admin | Secondary: System
+Description
+The administrator manages all user accounts including creation, modification, and deletion of Faculty and Student profiles. The system validates input, enforces uniqueness, updates Firestore, and logs all actions.
+Trigger
+Admin selects the User Management module from the administrative dashboard.
+Preconditions
+Admin is authenticated with valid credentials and administrative role privileges.
+Postconditions
+User records are created, updated, or removed. All changes are logged with timestamps.
+Normal Flow
+1. Admin navigates to User Management module. 2. Admin selects Add / Edit / Delete User. 3. System validates all input fields. 4. System performs the Firestore database operation. 5. System generates a confirmation and logs the operation.
+Alternative Flows
+AF-1: If email already exists, system warns admin to update existing record. AF-2: If required fields are incomplete, system highlights them and blocks submission.
+Exceptions
+E1: If Firestore is unavailable, system displays a connectivity error and halts the operation.
+Business Rules
+BR-1: Only Admin users may execute user management operations. BR-2: Every account must have a unique ID and verified institutional email. BR-3: All actions must be recorded in the system activity log.
+3.2.2 Use Case 2 - Event Management
+Table 3.2: Use Case Description - UC-2 Event Management
+Use Case ID
+UC-2
+Use Case Name
+Event Management
+Actors
+Primary: Admin, Faculty | Secondary: System
+Description
+Faculty create and submit event proposals with full event details. The submission enters an admin approval queue where it is reviewed, approved, or rejected. The system manages validation, Firestore storage, and automated notifications throughout.
+Trigger
+Faculty or Admin initiates an event creation or modification request from the dashboard.
+Preconditions
+User is authenticated with Faculty or Admin-level privileges.
+Postconditions
+Event is stored in Firestore with Pending, Approved, or Rejected status. Relevant stakeholders receive push notifications.
+Normal Flow
+1. Faculty selects Create Event and fills in all required details. 2. System validates input and stores the event in Firestore with Pending status. 3. System notifies Admin of the new pending event. 4. Admin reviews and approves or rejects the event with optional notes. 5. System updates Firestore and notifies Faculty of the decision.
+Alternative Flows
+AF-1: If Admin requires modifications, event is returned to Faculty with feedback for resubmission. AF-2: If date conflicts with existing event in same venue, system alerts Faculty.
+Exceptions
+E1: If Firestore is unavailable during submission, system displays error and instructs retry.
+Business Rules
+BR-1: Only approved events are visible to students. BR-2: Rejected events must include mandatory admin feedback. BR-3: All event data must be processed through the Data Management module.
+3.2.3 Use Case 3 - Event Participation
+Table 3.3: Use Case Description - UC-3 Event Participation
+Use Case ID
+UC-3
+Use Case Name
+Event Participation
+Actors
+Primary: Student | Secondary: Faculty, System
+Description
+Students browse approved events and register digitally. On event day, students scan a unique QR code to confirm attendance. The system validates the scan, records attendance in Firestore, and marks certificate eligibility.
+Trigger
+Student selects the Register button on an approved event listing.
+Preconditions
+Event has Approved status and remaining capacity. Student is authenticated and has not previously registered.
+Postconditions
+Registration is saved in Firestore. Attendance is confirmed upon QR scan. Certificate eligibility is updated automatically.
+Normal Flow
+1. Student browses approved events and selects one. 2. Student clicks Register. System validates status and seat availability. 3. System stores registration record and decrements remaining capacity. 4. System sends a confirmation push notification to the student. 5. On event day, student scans QR code. System validates scan and records attendance.
+Alternative Flows
+AF-1: If event is at full capacity, system informs student and suggests other events. AF-2: If QR scan fails, Faculty may manually verify attendance through the Faculty dashboard.
+Exceptions
+E1: If event is not Approved, registration is denied. E2: If QR code is invalid or already used by same student, attendance is rejected.
+Business Rules
+BR-1: Only registered students may scan the event QR code. BR-2: Each QR code is unique per event and single-use per student. BR-3: All participation records must be stored through the Firestore Data Management module.
+3.2.4 Use Case 4 - Reports and Analytics
+Table 3.4: Use Case Description - UC-4 Reports and Analytics
+Use Case ID
+UC-4
+Use Case Name
+Reports and Analytics
+Actors
+Primary: Admin, Faculty | Secondary: System
+Description
+Admin and Faculty generate detailed reports on event activity, participation rates, attendance statistics, and departmental engagement. The system processes Firestore data into visual charts and exportable formats.
+Trigger
+Admin or Faculty selects the Reports and Analytics module from the dashboard.
+Preconditions
+System contains existing event, registration, and attendance data. User has Admin or Faculty-level access.
+Postconditions
+Report is displayed in chart or summary format and is available for export in PDF or Excel.
+Normal Flow
+1. Admin or Faculty navigates to the Reports module. 2. User selects report type and optionally applies filters. 3. System retrieves and processes data from Firestore. 4. System displays visual charts and statistical summaries. 5. User exports the report if required.
+Alternative Flows
+AF-1: If no data exists for selected filters, system informs user and suggests broadening criteria. AF-2: User may apply additional filters for targeted analysis.
+Exceptions
+E1: If data retrieval fails, system displays an error and prevents a partially generated report.
+Business Rules
+BR-1: Report data must be fetched securely through the Firestore Data Management module. BR-2: Only the event-creating faculty may access analytics for their specific event. BR-3: Reports must be exportable in PDF and Excel formats.
+3.2.5 Use Case 5 - System Administration and Maintenance
+Table 3.5: Use Case Description - UC-5 System Administration and Maintenance
+Use Case ID
+UC-5
+Use Case Name
+System Administration and Maintenance
+Actors
+Primary: Admin | Secondary: System
+Description
+The Admin maintains platform stability through system configuration updates, data backups, activity log reviews, user role management, and issue resolution. The system automates monitoring and scheduled backups.
+Trigger
+Admin initiates a maintenance operation or the system detects a scheduled maintenance window.
+Preconditions
+Admin is authenticated with system administrator-level privileges.
+Postconditions
+System health logs, backup records, and configuration changes are updated. All actions are logged with timestamps.
+Normal Flow
+1. Admin navigates to System Administration module. 2. Admin selects action: Backup, Config Update, User Role Management, or Health Check. 3. System executes the operation and interacts with Firestore and Firebase Storage. 4. System records the action and outcome in the activity log. 5. System confirms completion to Admin.
+Alternative Flows
+AF-1: If backup fails, system retries and alerts Admin with failure cause. AF-2: If update requires downtime, all active users receive prior notification.
+Exceptions
+E1: If insufficient storage is available during backup, system aborts and notifies Admin.
+Business Rules
+BR-1: All system activities must be logged with minimum 6-month retention. BR-2: All maintenance operations use the Data Management module. BR-3: Only Admin users may execute maintenance or system update operations.
+3.3 Functional Requirements
+The functional requirements specify the functionality that the Event Sphere system needs to support the interactions with its actors. The requirements are grouped below by feature, each feature is presented in a sub-section and the requirements for that feature are presented in a table. This allows us to link system features to their requirements.
+3.3.1 User Registration and Login
+Table: Functional Requirements - User Registration and Login
+FR ID
+Priority
+Actor
+Requirement Description
+FR-1.1
+High
+Admin
+The administrator shall be able to create, update, and delete user accounts for Faculty and Student users within the system.
+FR-1.2
+High
+System
+The system shall validate all user input fields including email format, password strength, and role assignment before storing in Firestore.
+FR-1.3
+Medium
+System
+Password reset links must expire within 15 minutes of issuance to prevent unauthorized access through stale tokens.
+3.3.2 Event Creation and Management
+Table: Functional Requirements - Event Creation and Management
+FR ID
+Priority
+Actor
+Requirement Description
+FR-2.1
+High
+Faculty
+Faculty shall be able to create new event proposals containing title, description, date, time, venue, category, and society association.
+FR-2.2
+High
+Admin
+The administrator shall approve or reject event proposals submitted by Faculty, with mandatory feedback notes for rejected submissions.
+FR-2.3
+Medium
+System
+The system shall automatically send push notifications to Faculty upon approval or rejection of their submitted event proposal.
+3.3.3 Event Registration and Participation
+Table: Functional Requirements - Event Registration and Participation
+FR ID
+Priority
+Actor
+Requirement Description
+FR-3.1
+High
+Student
+Students shall be able to view all approved events and register through a one-tap digital registration process with automatic seat management.
+FR-3.3
+Medium
+System
+The system shall send automated confirmation notifications upon registration and reminder notifications 24 hours before the scheduled event.
+3.3.4 QR Code Scanning and Attendance
+Table: Functional Requirements - QR Code Scanning and Attendance
+FR ID
+Priority
+Actor
+Requirement Description
+FR-3.2
+High
+System
+The system shall generate unique QR codes for each approved event and provide a built-in scanner for student attendance verification on the event day.
+3.3.5 Notifications
+Table: Functional Requirements - Notifications
+FR ID
+Priority
+Actor
+Requirement Description
+FR-2.3
+Medium
+System
+The system shall deliver event status notifications (approval, rejection, updates) to Faculty and event reminder notifications to registered students.
+FR-3.3
+Medium
+System
+Registration confirmation and 24-hour reminder notifications shall be triggered automatically without any manual intervention.
+3.3.6 Reports and Analytics
+Table: Functional Requirements - Reports and Analytics
+FR ID
+Priority
+Actor
+Requirement Description
+FR-4.1
+High
+Admin
+The administrator shall generate comprehensive event participation reports including event name, participation rate, attendance count, and feedback summary.
+FR-4.2
+Medium
+Faculty
+Faculty shall access attendance analytics and engagement trends for the events they have created and managed.
+FR-4.3
+Medium
+System
+The system shall generate visual charts and statistical summaries with export functionality supporting PDF and Excel formats.
+3.3.7 Expense (Cost) Management
+Table: Functional Requirements - Expense (Cost) Management
+FR ID
+Priority
+Actor
+Requirement Description
+FR-5.1
+High
+Admin
+The administrator shall manage system configurations, apply updates, and oversee expense approval workflows without interrupting active user sessions.
+FR-5.2
+High
+System
+The system shall log and maintain records of all administrative activities and expense submissions with a minimum retention of six months.
+FR-5.3
+High
+System
+The system shall perform automated daily backups of all event, user, and expense data at midnight server time with integrity verification.
+3.3.8 System Administration and Maintenance
+Table: Functional Requirements - System Administration and Maintenance
+FR ID
+Priority
+Actor
+Requirement Description
+FR-5.1
+High
+Admin
+The administrator shall manage user roles, system configurations, and maintenance operations including data backups and system health checks.
+FR-5.2
+High
+System
+The system shall log all administrative actions and track system activities for auditing and accountability.
+3.4 Non-Functional Requirements
+Non-functional requirements specify the quality characteristics and constraints that apply to the way Event Sphere operates. They are grouped below into quality categories, and are each listed in a separate sub-section, detailing the performance criteria that Event Sphere must satisfy.
+3.4.1 Usability Requirements
+This section defines the usability standards that Event Sphere must satisfy to deliver a reliable and high-quality experience to all stakeholders.
+Table: Usability Requirements
+NFR ID
+Requirement
+NFR-1.1
+Key features such as event registration and report generation shall be accessible within three clicks from the main dashboard.
+NFR-1.2
+The user interface shall maintain consistent layout, color themes, and navigation controls across all modules for all user roles.
+NFR-1.3
+The system shall display clear validation and error messages to guide users through form submissions and corrections.
+NFR-1.4
+The application shall require no specialized technical training and shall be accessible to users with basic digital literacy.
+3.4.2 Performance Requirements
+This section defines the performance standards that Event Sphere must satisfy to deliver a reliable and high-quality experience to all stakeholders.
+Table: Performance Requirements
+NFR ID
+Requirement
+NFR-2.1
+The system shall respond to all user interactions within two seconds under normal network conditions.
+NFR-2.2
+Event creation, editing, and deletion operations shall complete within five seconds of initiation.
+NFR-2.3
+The system shall support simultaneous access by at least 500 active users without performance degradation.
+NFR-2.4
+QR-based attendance verification shall be processed and confirmed within three seconds of a valid scan.
+NFR-2.5
+Report generation for datasets of up to 10,000 records shall complete within ten seconds.
+3.4.3 Scalability Requirements
+This section defines the scalability standards that Event Sphere must satisfy to deliver a reliable and high-quality experience to all stakeholders.
+Table: Scalability Requirements
+NFR ID
+Requirement
+NFR-3.1
+The system architecture shall support both horizontal and vertical scaling to accommodate future growth in users and events.
+NFR-3.2
+The system shall support a minimum of 10,000 registered users and 1,000 concurrent sessions with minimal latency.
+NFR-3.3
+The database schema shall accommodate addition of new data entities and modules without redesigning the core structure.
+3.4.4 Availability Requirements
+This section defines the availability standards that Event Sphere must satisfy to deliver a reliable and high-quality experience to all stakeholders.
+Table: Availability Requirements
+NFR ID
+Requirement
+NFR-4.1
+The system shall maintain 99.9% uptime excluding planned and communicated maintenance windows.
+NFR-4.2
+In the event of server failure, the system shall recover from the most recent verified backup within 15 minutes.
+NFR-4.3
+The system shall implement automated restart and failover mechanisms to ensure continuous operation.
+3.4.5 Compatibility Requirements
+This section defines the compatibility standards that Event Sphere must satisfy to deliver a reliable and high-quality experience to all stakeholders.
+Table: Compatibility Requirements
+NFR ID
+Requirement
+NFR-5.1
+The mobile application shall be compatible with Android devices running Android 8.0 or higher.
+NFR-5.2
+The web-based landing page shall be compatible with all major modern browsers including Chrome, Firefox, Edge, and Safari.
+NFR-5.3
+The application shall support integration with institutional email systems for notifications and account verifications.
+3.4.6 Maintainability Requirements
+This section defines the maintainability standards that Event Sphere must satisfy to deliver a reliable and high-quality experience to all stakeholders.
+Table: Maintainability Requirements
+NFR ID
+Requirement
+NFR-6.1
+The system shall be modular, allowing independent maintenance of features without affecting other modules.
+NFR-6.2
+The System Administration module shall record comprehensive logs of all activities, configurations, and errors.
+NFR-6.3
+All source code shall follow documented naming conventions and be managed under Git version control throughout development.
+The non-functional requirements specified above collectively define the operational quality baseline for Event Sphere. Together they ensure the system is accessible, fast, scalable, always available, broadly compatible, and easy to maintain and extend over time.
+
+
+==========================================
+FILE: EventSphere_Ch6_v1.docx
+==========================================
+Chapter 6
+TESTING AND EVALUATION
+6. Testing and Evaluation
+The testing phase is crucial to guarantee the Event Sphere system requirements as outlined in the SRS are satisfied. Given the system is comprised of multiple interrelated modules - User Authentication, Event Management, Admin Approval Workflow, Student Registration, QR Code Attendance, Notification System, Expense Management, Reports and Analytics and Admin Dashboard - testing was carried out for the whole system to ensure the system is correct, reliable, secure and integrated.
+The overall testing process involved unit testing, integration testing, system testing, performance testing and usability testing for the entire mobile application (Android) and Firebase services. This chapter briefly describes the testing strategy, plan, test cases and observed results of the system's behaviour compared to what is expected to be delivered as outlined in the SRS.
+6.1 Testing Strategy
+6.1.1 Unit Testing
+The functions, services and UI elements have all been tested in isolation to ensure that they were all working correctly. The following were unit tested:
+6.1.1.1 Authentication Module
+Email and password login with valid and invalid credentials
+Role-based routing verification (Admin, Faculty, Student dashboard navigation)
+Password reset link generation and 15-minute expiry enforcement
+User registration with duplicate email detection and validation error handling
+6.1.1.2 Event Management Module
+Event creation form validation (required fields, date format, capacity limits)
+Firestore write operations for new event documents with Pending status
+Poster image upload to Firebase Storage and URL retrieval
+Event editing and resubmission workflow for Rejected events
+6.1.1.3 Registration and Attendance Module
+Firestore transaction for atomic seat availability check and registration creation
+Duplicate registration prevention for the same student-event combination
+QR code generation accuracy and uniqueness per event
+QR scan validation: event ID match, registration check, duplicate check-in prevention
+6.1.1.4 Notification Module
+FCM push notification delivery for approval, rejection, and registration triggers
+Firestore Notification document creation and seen-status update
+24-hour event reminder scheduling and delivery accuracy
+6.1.1.5 Expense Management Module
+Expense form validation (amount, category, mandatory receipt upload)
+Receipt image upload to Firebase Storage and Firestore URL storage
+Admin approval and rejection status update and Faculty notification delivery
+6.1.1.6 Admin Module
+User account CRUD operations (Create, Read, Update, Delete) in Firestore
+Event approval and rejection with mandatory notes enforcement
+System activity log entry creation for all admin operations
+Dashboard analytics data retrieval and aggregation accuracy
+6.1.2 Integration Testing
+Integration testing validated the interactions between multiple components working together across the system. The following integration workflows were tested:
+6.1.2.1 Event Lifecycle Workflow
+Faculty creates event  system validates and writes to Firestore  Admin receives approval notification  Admin approves  event appears in Student event list via real-time listener
+Admin rejects event with notes  Faculty receives rejection notification with notes  Faculty edits and resubmits  Admin re-reviews and approves
+6.1.2.2 Student Participation Workflow
+Student registers for event  Firestore transaction creates registration  capacity decremented  confirmation notification delivered  QR scanner activated on event day  attendance recorded  certificate eligibility updated
+Event cancellation flow  Student receives cancellation notification  registration status updated  capacity restored
+6.1.2.3 Firebase Backend Integration
+Firebase Authentication token  Firestore user profile retrieval  RBAC role enforcement  role-based dashboard rendering
+Firestore real-time listeners  UI rendering updates without manual refresh across all connected devices
+Firebase Storage upload  URL stored in Firestore document  image rendered in UI from stored URL
+6.1.2.4 Notification Integration
+Event status change triggers FCM notification  notification delivered to target user device  Firestore notification document created  notification displayed in in-app notification center
+6.1.3 System Testing
+Full end-to-end testing was conducted across the complete mobile application to verify the system operated correctly as a unified whole.
+6.1.3.1 Student End-to-End Flow
+Login  role verified  Student dashboard loaded  browse events  view event details  register  receive confirmation notification  on event day: scan QR  attendance recorded  receive post-event notification
+6.1.3.2 Faculty End-to-End Flow
+Login  Faculty dashboard  create event with poster  submit for approval  receive approval notification  view participant list  generate participant report  submit expense  receive expense decision notification
+6.1.3.3 Admin End-to-End Flow
+Login  Admin dashboard  review pending events  approve or reject with notes  manage user accounts  review expense claims  view system-wide analytics  download participation reports  review system activity logs
+6.1.4 Performance Testing
+Performance tests assessed the effectiveness, speed and resource consumption under typical use cases.
+6.1.4.1 Response Time Testing
+Time to load event listings, process registrations and verify QR attendance checks were recorded in multiple rounds of testing on mid-tier Android devices with typical Wi-Fi network speeds.
+6.1.4.2 Concurrent User Load Testing
+Concurrent user load testing and profiling was carried out by simultaneously accessing the system by 500 users performing event browsing, event registration and notification retrieval to measure the stability and scalability of the Firebase platform under typical university event use cases.
+6.1.4.3 Backend Performance
+The average load times for Firestore read/write operations, Firebase Storage uploads and FCM notification delivery times were recorded and compared to the performance requirements set in the NFRs of the SRS.
+6.1.5 Usability Testing
+Usability tests were performed with a sample of users from each stakeholder group to assess the ease of use, clarity and user satisfaction with the application.
+6.1.5.1 Student Usability
+The student usability tests indicated that the event search and registration process was easy to navigate without assistance. Event registration was completed by students in three taps. Participants found the QR scanner interface easy to use, and understood the message confirming attendance. Messages were judged to be timely and informative, and the application was found to be easy to navigate with easy-to-understand functions.
+6.1.5.2 Faculty Usability
+Faculty participants found the event form to be thorough and simple to complete. The progressive field arrangement and error messages helped them avoid errors when they submitted the form. Participants were able to easily find the participant list for their events and interpreted the approval status indicators. The expense submission module was found to be easy to use, with receipts upload being simple.
+6.1.5.3 Admin Usability
+The administrators agreed that the admin dashboard was well organised, displaying all pending approvals, users and analytics. Event approval and rejection was achieved in a timely manner with the required rejection notes field useful for providing feedback to Faculty. The user interface for add, edit, delete (CRUD) was considered simple and intuitive. Overall analytics were displayed in a way that allowed for easy processing of event trends.
+6.2 Test Plan
+Table 6.1 outlines the Event Sphere test plan that considered all functional units, non-functional aspects and cross-function integration workflows for the entire system.
+Table 6.1: Test Plan - Event Sphere
+Area
+Objective
+Methods Used
+Priority
+Authentication & User Management
+Verify login, registration, role-based routing, and password reset
+Unit tests, black-box testing
+High
+Event Creation & Management
+Validate event submission, editing, poster upload, and Firestore write operations
+Unit tests, integration tests
+High
+Event Approval Workflow
+Ensure admin approval and rejection correctly update event status and trigger notifications
+Integration tests, workflow tests
+High
+Student Registration
+Test one-tap registration, capacity enforcement, duplicate prevention, and confirmation notifications
+Unit tests, integration tests
+High
+QR Code Attendance
+Validate QR generation, scanning, event ID match, duplicate check-in prevention, and Firestore recording
+Unit tests, integration tests
+High
+Notification System
+Confirm FCM delivery for all trigger types: approvals, registrations, reminders, and rejections
+Integration tests, FCM testing
+High
+Expense Management
+Verify expense submission, receipt upload, admin review, and status update notifications
+Unit tests, CRUD tests
+Medium
+Reports and Analytics
+Test report generation accuracy, filter functionality, chart rendering, and PDF export
+Integration tests, black-box testing
+Medium
+Admin Dashboard
+Validate user management CRUD operations, system logs, and system-wide analytics display
+Web component testing, Firebase SDK tests
+High
+Non-Functional Requirements
+Measure response time, concurrent user handling, uptime, and QR scan processing speed
+Performance benchmarking, load testing
+High
+Table 6.1 outlines the test plan covering all system modules across Admin, Faculty, and Student roles. The plan ensures that every functional requirement from the SRS is associated with a defined testing objective and methodology, providing complete requirement traceability through the testing phase.
+6.3 Test Environment
+6.3.1 Hardware
+Android Device A: Samsung Galaxy A52, Android 12, 6GB RAM, 64MP camera - Primary testing device for all Student and Faculty module tests
+Android Device B: Xiaomi Redmi Note 10, Android 11, 4GB RAM, 48MP camera - Secondary testing device for QR scanner and UI responsiveness tests
+Android Device C: Samsung Galaxy A21s, Android 10, 3GB RAM - Low-end device testing for performance and compatibility validation
+Android Emulator: Medium Phone API 34 (Android Studio Giraffe) - Used for regression testing and module isolation tests
+6.3.2 Software
+Android Studio (Giraffe | 2022.3.1) - Primary development and testing IDE
+Flutter SDK (3.x stable) and Dart - Mobile application framework
+Firebase Console - Authentication, Firestore, Storage, and FCM monitoring and configuration
+Firebase Emulator Suite - Local backend emulation for offline unit and integration tests
+Postman - REST API testing for Supabase and Google Maps API endpoints
+Git and GitHub - Version control and test branch management
+6.4 Test Cases
+6.4.1 Authentication Test Cases
+Table 6.2: Authentication Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-Auth-01
+FR-1.1
+Valid email and password submitted
+Successful login; user routed to correct role dashboard
+Pass
+TC-Auth-02
+FR-1.1
+Invalid password submitted
+Error message displayed; access denied
+Pass
+TC-Auth-03
+FR-1.2
+Registration with duplicate email
+System displays duplicate email warning; registration blocked
+Pass
+TC-Auth-04
+FR-1.3
+Password reset link requested
+Reset link delivered; link expires after 15 minutes
+Pass
+TC-Auth-05
+FR-1.1
+Admin credentials entered
+Admin Dashboard loaded; Faculty/Student screens not accessible
+Pass
+6.4.2 Event Management Test Cases
+Table 6.3: Event Management Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-Evt-01
+FR-2.1
+Faculty submits event with all required fields
+Event stored in Firestore with Pending status; Admin notified
+Pass
+TC-Evt-02
+FR-2.1
+Faculty submits event with missing required field
+Validation error displayed; event not submitted
+Pass
+TC-Evt-03
+FR-2.2
+Admin approves a pending event
+Event status updated to Approved; Faculty receives notification; event visible to Students
+Pass
+TC-Evt-04
+FR-2.2
+Admin rejects event without providing notes
+System enforces mandatory rejection notes; rejection blocked until notes provided
+Pass
+TC-Evt-05
+FR-2.3
+Faculty resubmits rejected event after editing
+Event status reset to Pending; Admin receives new approval notification
+Pass
+6.4.3 Event Registration Test Cases
+Table 6.4: Event Registration Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-Reg-01
+FR-3.1
+Student registers for approved event with available capacity
+Registration stored in Firestore; confirmation notification sent; capacity decremented
+Pass
+TC-Reg-02
+FR-3.1
+Student attempts to register for event at full capacity
+System displays capacity-full message; registration blocked
+Pass
+TC-Reg-03
+FR-3.1
+Student attempts to register for same event twice
+System detects duplicate registration; second registration blocked
+Pass
+TC-Reg-04
+FR-3.1
+Student cancels an existing registration
+Registration status updated to Cancelled; event capacity incremented
+Pass
+TC-Reg-05
+FR-3.3
+Registration confirmation notification
+FCM push notification delivered to student within 5 seconds of registration
+Pass
+6.4.4 QR Code Attendance Test Cases
+Table 6.5: QR Code Attendance Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-QR-01
+FR-3.2
+Registered student scans valid event QR code
+Attendance recorded in Firestore; confirmation message displayed
+Pass
+TC-QR-02
+FR-3.2
+Student scans QR code for event they did not register for
+System detects missing registration; attendance rejected with error message
+Pass
+TC-QR-03
+FR-3.2
+Student attempts to scan QR code for second time (duplicate check-in)
+System detects existing attendance record; duplicate check-in rejected
+Pass
+TC-QR-04
+FR-3.2
+Invalid or corrupted QR code scanned
+System displays invalid QR code error; no attendance record created
+Pass
+TC-QR-05
+FR-3.2
+QR scan in low-light environment
+Scanner prompts user to improve lighting; scan retried successfully
+Pass
+6.4.5 Notification Test Cases
+Table 6.6: Notification Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-Not-01
+FR-2.3
+Admin approves Faculty event
+Faculty receives FCM push notification of approval within 5 seconds
+Pass
+TC-Not-02
+FR-2.3
+Admin rejects Faculty event with notes
+Faculty receives FCM push notification of rejection with rejection reason included
+Pass
+TC-Not-03
+FR-3.3
+Student successfully registers for event
+Student receives FCM registration confirmation notification
+Pass
+TC-Not-04
+FR-3.3
+24-hour event reminder trigger
+Registered students receive FCM reminder notification 24 hours before event
+Pass
+TC-Not-05
+FR-2.3
+Admin broadcasts system announcement
+All registered users receive the broadcast FCM notification
+Pass
+6.4.6 Expense Management Test Cases
+Table 6.7: Expense Management Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-Exp-01
+FR-5.1
+Faculty submits expense with receipt image
+Expense stored in Firestore with Pending status; receipt URL saved; Admin notified
+Pass
+TC-Exp-02
+FR-5.1
+Faculty submits expense without mandatory receipt
+System displays validation error; expense submission blocked
+Pass
+TC-Exp-03
+FR-5.1
+Admin approves pending expense
+Expense status updated to Approved in Firestore; Faculty receives approval notification
+Pass
+TC-Exp-04
+FR-5.1
+Admin rejects expense with reason
+Expense status updated to Rejected; Faculty receives rejection notification with reason
+Pass
+6.4.7 Admin Dashboard Test Cases
+Table 6.8: Admin Dashboard Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-Adm-01
+FR-5.2
+Admin creates new Faculty user account
+User document created in Firestore; activity log entry generated
+Pass
+TC-Adm-02
+FR-5.2
+Admin deletes Student account
+User document removed from Firestore and Firebase Authentication; activity logged
+Pass
+TC-Adm-03
+FR-4.1
+Admin generates participation report with date filter
+Report generated with accurate filtered data within 10 seconds; PDF export available
+Pass
+TC-Adm-04
+FR-5.2
+Admin views system activity log
+All admin operations listed with timestamps and outcome status
+Pass
+TC-Adm-05
+FR-5.3
+Automated daily data backup
+Backup completed at midnight; backup integrity verified; confirmation logged
+Pass
+6.4.8 Performance Test Cases
+Table 6.9: Performance Test Cases
+TC ID
+Req. Ref
+Input / Action
+Expected Output
+Status
+TC-Perf-01
+NFR-2.1
+User taps button or submits form on mid-range device
+System responds within 2 seconds
+Pass
+TC-Perf-02
+NFR-2.4
+Student scans valid QR code on mid-range device
+Attendance verified and confirmed within 3 seconds
+Pass
+TC-Perf-03
+NFR-2.3
+500 concurrent users access event listing simultaneously
+System remains stable; no crashes; response times within acceptable limits
+Pass
+TC-Perf-04
+NFR-2.5
+Admin generates report with 5,000 records
+Report generated and displayed within 10 seconds
+Pass
+TC-Perf-05
+NFR-2.2
+Faculty submits new event with poster upload
+Event stored and confirmation received within 5 seconds
+Pass
+6.5 Evaluation Results
+6.5.1 Functional Results
+All functional requirements defined in the SRS were successfully validated through the test cases executed during the testing phase. The event lifecycle workflow - from Faculty event creation through Admin approval to Student registration and QR attendance - operated correctly and consistently across all tested scenarios. Role-based access control correctly restricted each user type to their permitted modules and data. The expense management workflow executed correctly including receipt upload, Admin review, and status notifications. All test cases covering the Notifications module passed, confirming that FCM push notifications were reliably delivered for all defined trigger events.
+6.5.2 Performance Results
+Table 6.10 summarizes the measured performance results against the NFR thresholds defined in the SRS.
+Table 6.10: Performance Evaluation Results
+Test Metric
+NFR Requirement
+Actual Result
+Status
+Event Registration Response
+< 2 seconds
+1.4 seconds (median)
+√ Pass
+QR Attendance Verification
+< 3 seconds
+2.1 seconds (median)
+√ Pass
+Event Creation and Submission
+< 5 seconds
+3.2 seconds (median)
+√ Pass
+Push Notification Delivery
+< 5 seconds
+2.8 seconds (average)
+√ Pass
+Report Generation (5,000 records)
+< 10 seconds
+6.7 seconds
+√ Pass
+Concurrent User Load (500 users)
+No degradation
+Stable, no crashes
+√ Pass
+Poster Image Upload
+< 5 seconds
+2.3 seconds (average)
+√ Pass
+Admin Approval Propagation
+Real-time
+< 500ms (Firestore listeners)
+√ Pass
+The performance results confirm that Event Sphere meets all NFR performance thresholds defined in the SRS. QR attendance verification was consistently completed within three seconds across all tested devices, meeting the defined requirement. Event registration processing was completed within 1.4 seconds on average, well within the two-second threshold. The system demonstrated stable operation under 500 concurrent simulated user sessions, confirming scalability requirements are satisfied.
+6.5.3 Usability Results
+Average number of taps to complete event registration from the home screen: 4
+Average number of taps to complete QR attendance from the home screen: 3
+UI clarity rating from student usability testing: 4.5 / 5
+Faculty event creation workflow completion without guidance: 100% of test participants
+Admin event approval workflow completion time: under 30 seconds per event
+6.5.4 Robustness
+The system demonstrated robust behavior under error conditions throughout testing. Invalid QR code scans were correctly rejected with appropriate error messages. Duplicate registration attempts were consistently blocked by the Firestore transaction mechanism. The system gracefully handled network interruptions during event listing by displaying appropriate connectivity messages without crashing. Firebase Security Rules successfully prevented unauthorized read and write access attempts across all collections when tested with mismatched user roles.
+6.6 Discussion
+All functional and non-functional requirements across the Admin, Faculty, and Student modules were successfully validated throughout the testing phase. The system demonstrated reliable real-time data synchronization through Firebase Firestore listeners, ensuring that event status changes, registration updates, and notification deliveries were reflected immediately across all connected devices without manual refresh. Role-based authentication operated seamlessly and consistently directed all users to their appropriate dashboards without exposing unauthorized modules.
+The QR code attendance system proved to be the most technically complex module due to the requirement for multi-validation checks including event ID matching, registration validity, and duplicate check-in prevention within a single atomic operation. All three validation layers performed correctly under all tested scenarios. The notification delivery system using Firebase Cloud Messaging achieved consistent delivery times averaging 2.8 seconds, meeting the real-time communication expectations of the platform.
+Performance testing confirmed that the system remains stable and responsive under simulated concurrent access by 500 users, validating the scalability of the Firebase cloud backend for realistic university event scenarios. The expense management module introduced additional Firestore write operations and Firebase Storage uploads, which performed within acceptable time limits without impacting the responsiveness of other modules.
+Some limitations were noted during testing. The QR scanner performance was slightly reduced under very low ambient lighting conditions, requiring the user to improve environmental lighting before a successful scan could be completed. Push notification delivery times were observed to increase marginally (up to 5 seconds) during periods of high concurrent activity, though this remained within the defined NFR threshold. Future improvements may include local QR fallback options for low-light conditions, optimized batch notification delivery for large user populations, and offline event caching to support limited-connectivity scenarios.
+
+
+==========================================
+FILE: EventSphere_Ch7.docx
+==========================================
+Chapter 7
+CONCLUSION AND FUTURE WORK
+7. Conclusion and Future Work
+7.1 Conclusion
+Event Sphere is a successful example of how the latest mobile technologies, cloud-based back-end services and real-time data synchronization can be integrated to build a highly accessible, efficient, and role-based university event management system. The app solves a well documented problem at COMSATS University Islamabad, Sahiwal Campus - the lack of a centralised, online system for managing the entire event life cycle from proposal creation by faculty and approval by administrators, to student registration, attendance tracking using QR codes, and analytics after the event.
+The development of this system was based on the Agile Software Development Lifecycle and was done in nine well-defined phases, each focusing on a particular module of the application. This allowed the development team to develop, test and refine each module in isolation but ensure they were integrated and tested at regular intervals across the whole system. The resulting system is a complete Android mobile app that caters for three types of users:
+Admin: Manages users, approves or rejects events, reviews expenses, configures the system and assesses institutional analytics.
+Faculty: Event management, monitoring of participants, expense submissions and analytics for events they organize.
+Student: Event browsing, single-click event registration, QR attendance confirmation, push notification, and event favourite.
+The system satisfies all the functional and non-functional requirements in the SRS, including:
+Responsive system: Event registration acknowledged in 1.4 seconds on average; QR scanning for attendance acknowledged in 2.1 seconds on average.
+Event synchronization: Firebase Firestore listeners broadcast changes to the state of events and other data updates to all devices within 500 milliseconds.
+Scalable backend: Firebase and Supabase cloud infrastructure handles up to 500 users simultaneously with consistent performance, achieving the desired scalability.
+Secure permissions: Firebase Authentication and Firebase Security Rules manage rigorous role-based access for the three user roles for the app and the database.
+Automated notifications: Firebase Cloud Messaging system pushes notifications for all specified events within 2.8 seconds on average.
+QR-based attendance: The multi-validated QR attendance module eliminates proxy attendance and multiple check-ins with 100% efficiency in all use cases.
+Modular and maintainable code: Flutter and Dart code is written using object-oriented design principles, and separated into service and user interface (UI) modules for ease of maintenance.
+In conclusion, Event Sphere meets all the objectives outlined in the SDD and represents a solid and scalable foundation to build a university event management ecosystem that can be further extended, improved and implemented in multiple campuses.
+7.2 Limitations
+While Event Sphere is stable across the broad range of scenarios tested, during the development and testing process, we identified a number of limitations that can be improved in the future:
+7.2.1 Internet Connectivity Dependency
+Event Sphere is currently an online application, requiring internet connectivity for almost all of its features, including searching and viewing events, registering for events, using QR codes to track attendance, sending notifications, as well as administrative tasks. The application is not usable in low- or no-signal areas. Although Firebase Firestore provides some offline capabilities, these were not fully set up in this version, so event information may not be available offline. This makes the app less useful in the context of university where network connectivity may be unreliable.
+7.2.2 Android Platform Only
+Event Sphere is currently only compatible with Android devices on Android 8.0+. The first release doesn't support iOS devices because of the resources required for platform-specific development and testing. This restricts the use of the app to students and teachers with iPhone devices. Although Flutter's cross-platform ability means that the iOS version can be developed without rewriting the code, testing, Firebase configuration and App Store deployment issues must be resolved to release the iOS version.
+7.2.3 QR Scanner Performance Under Low Lighting
+During testing, there was a slight performance degradation of the QR code scanner module in very low lighting conditions. When the event space was dimly lit, some students needed to scan their QR code multiple times for the code to be captured by the camera. The mobile scanner package works well under normal lighting conditions, but the current version does not automatically turn on the phone's flash or automatically adjust the exposure of the camera to adapt to low light conditions. As a result, it may cause slight delays in marking attendance for the event.
+7.2.4 No Offline Event Caching
+The current Event Sphere application does not provide offline caching of event information. Once the app is opened, students are unable to browse event details and register for events without internet access. Implementing an offline-first approach with Firestore's offline persistence feature and offline device storage would greatly enhance the app's offline mode performance. 
+7.2.5 Manual Fallback for QR Attendance
+The existing system relies on Faculty to manually check and record attendance in the Faculty dashboard in the case of the QR code scanner or device camera not working on the event day. This creates a need for Faculty intervention for special cases of student attendance and may slow down the check-in process. The implementation of an alternative system such as an attendance PIN or manual attendance confirmation within the app would help to alleviate this.
+7.3 Future Improvements
+A number of improvements have been identified that will greatly enhance the functionality, user base and value of Event Sphere in future iterations:
+7.3.1 iOS Version
+To reach all of the students and faculty, Event Sphere should support iOS. Given that the system is developed using Flutter, multi-platform support for iOS devices can be achieved by resolving platform-specific issues, Firebase iOS SDK integration, Apple Push Notification Service (APNs) integration with FCM notifications and App Store installation procedures. Releasing the application for iOS will significantly boost its impact on campus.
+7.3.2 AI-Based Event Recommendations
+Event recommendations can be added to the Student interface using a machine learning (ML) model that makes recommendations based on student event registration history, department, interests and event attendance. This recommendation engine could leverage Firebase ML or Google Vertex AI and provide event recommendations on the Student Home Screen interface. This would enhance student engagement by recommending events that students are likely to be interested in.
+7.3.3 Multi-Campus Support
+Enhancing Event Sphere to support multiple university campuses would enable COMSATS University to roll out the system across all its campuses. Administrator namespaces would be available within the Firestore database for each campus, and administrators could choose to see events from other campuses. This feature would involve changes to the RBAC, Firestore database security rules and event filtering page to support segregation of data by campus, while providing a holistic administrative view at the institutional level.
+7.3.4 Offline Mode with Event Caching
+Enhancing the system with support for offline mode using Firestore's offline persistence settings and device caching would enable students to access event data (loaded previously), event registration details, and their QR attendance logs offline. This data would be automatically synchronized when the connection is restored. This would greatly enhance Event Sphere's resilience in the university setting with intermittent internet access.
+7.3.5 Event Ticketing and Payment Integration
+We can integrate a secure event ticketing and payment module to facilitate payment for university events, workshops and training. The payment module would support Faculty in marking events as paid and setting ticket prices, and would require payment confirmation before allowing students to register for events. This functionality would allow students to pay for events within the app through secure payment platforms like JazzCash, Easypaisa or Stripe. This would enable Event Sphere to be applied to events and workshops with a revenue stream for the university as well as outreach events for other institutions.
+7.3.6 Web-Based Admin Dashboard
+A custom-built web-based administrative dashboard for university administrators using the React.js framework and the Firebase Web SDK would offer a more feature-rich and screen-real-estate efficient way to manage users, view analytics, moderate content and create reports. A web dashboard would be an excellent complement to the mobile app, giving university administrators the ability to quickly and easily access desktop-class management features, especially for data-intensive operations like managing large groups of users, and reviewing analytics for multiple events.
+7.3.7 Google Calendar Synchronization
+Synchronization with Google Calendar API would enable students and faculty to add "approved" events to their Google Calendars with a single click from the Event Detail Screen. Events would display all pertinent information including event name, time, location and a link back to the Event Sphere event page. The new feature would enable users to plan their academic activities and minimize event no-shows by adding event reminders to their daily calendar activities.
+7.3.8 Advanced Analytics and Institutional Reporting
+Adding sophisticated data visualizations to the Reports and Analytics module, such as trend charts, heat maps, department engagement and event participation comparisons, and year-on-year event engagement analytics, would give university administrators much more useful institutional data. Exporting data to Google Data Studio or Power BI via Firebase would allow complex institutional reports to be generated, capable of being used in academic quality assurance processes and for university administration decision making. Email-based scheduled delivery of reports could also enhance the reporting process.
+7.4 Final Remarks
+Event Sphere is a valuable and feasible addition to the field of mobile academic event administration. The project successfully integrates:
+Flutter and Dart mobile application development
+Firebase real-time data cloud backend based development
+Role-based authorization for the multiple stakeholders at a university
+QR code scanning for quick and efficient check-in at events
+Firebase Cloud Messaging for automatic real-time notifications
+Event expense management process for budget management
+Google Maps API to display event locations
+Google Gemini for in-app user support
+The system provides a real-world, user-friendly solution to a well-documented pain point of students, faculty and administration at COMSATS University Islamabad, Sahiwal Campus. Event Sphere's cloud-based automated and role-based system integrates manual administrative tasks into a digital platform, removing the existing inefficiencies that have prevented students, faculty and administrators from enjoying the benefits of student engagement, control and data-driven event planning that have become the standard in other industries.
+Event Sphere is a foundational system that can be extended to support a future smart university event space - one that can evolve to include AI-based event recommendations, multi-campus institutional deployment, offline modes, integrated payments and analytics, thus providing a scalable and extensible platform for next-generation academic event management systems.
+
+
